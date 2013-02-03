@@ -6,7 +6,7 @@ class Participant
 	attr_accessor :first_name, :last_name, :firm, :title, :type
 
 	def initialize(name_str, firm_title_str, type)
-		@first_name, @last_name = name_str.split(' ')
+		@first_name, @last_name = name_str.split(' ', 2)
 		@firm, @title = firm_title_str.split(' - ')
 		@type = type
 	end
@@ -80,7 +80,7 @@ pps['Operator'] = 'Operator'
 #end
 
 ## find and senatize Q and A contents
-qna_contents = sents.join('|').gsub('|-', ' -').squeeze(' ').match(/QUESTION AND ANSWER\|(.*)DISCLAIMER/)[1].split('|')
+qna_contents = sents.join('|').gsub('|-', ' -').squeeze(' ').match(/QUESTION AND ANSWER\|(.*DISCLAIMER)/)[1].split('|')
 
 #puts "------------------"
 #puts qna_contents
@@ -96,6 +96,13 @@ puts search_strings
 puts "------------------"
 
 qna_contents.each_with_index do |value, index|
+	if value == 'DISCLAIMER'
+		qnas << current_qna.clone unless current_qna.nil?
+		break
+	end
+	# found a match
+	# save the current qna object to qnas if it exist
+	# create a new qna object
 	if search_strings.include? value
 		qnas << current_qna.clone unless current_qna.nil?
 		current_qna = Qna.new
@@ -104,7 +111,6 @@ qna_contents.each_with_index do |value, index|
 	else
 		current_qna.sentences << value unless current_qna.nil?
 	end
-		
 end
 
 puts "------------------"
