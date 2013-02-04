@@ -36,7 +36,7 @@ class Qna
 		questions
 	end
 
-	def count_words(sentences=@sentences)
+	def num_of_words(sentences=@sentences)
 		count = 0
 		sentences.each do |s|
 			#puts s
@@ -47,13 +47,14 @@ class Qna
 		count
 	end
 
-	def count_questions
+	def num_of_questions
 		questions.size
 	end
 
-	def count_words_in_questions
-		count_words(questions)
+	def num_of_words_in_questions
+		num_of_words(questions)
 	end
+	
 end
 
 def usage
@@ -75,6 +76,22 @@ def to_csv(content, path)
       end
     end
   end
+end
+
+def count_word_frequence(sentences, word_freq={})
+	sentences.each do |s|
+		s.split(' ').each do |w|
+			cw = w.downcase.gsub(/\W/, '')
+			next unless cw != ''
+
+			if word_freq[cw].nil?
+				word_freq[cw] = 1
+			else
+				word_freq[cw] += 1
+			end	
+		end
+	end
+	word_freq
 end
 
 def parse(file)
@@ -131,6 +148,7 @@ def parse(file)
 
 	current_qna = nil
 	qnas = []
+	word_freq = {}
 
 	qna_contents.each_with_index do |value, index|
 		if value == 'DISCLAIMER'
@@ -155,12 +173,19 @@ def parse(file)
 		next if qna.participant == 'Operator'
 		puts '------------------------'
 		puts qna.participant.to_s
-		#puts '# of words: ' + qna.count_words(qna.sentences).to_s
-		puts '# of words: ' + qna.count_words.to_s
-		puts '# of questions: ' + qna.count_questions.to_s
-		puts '# of words in questions: ' + qna.count_words_in_questions.to_s
+		#puts '# of words: ' + qna.num_of_words(qna.sentences).to_s
+		puts '# of words: ' + qna.num_of_words.to_s
+		puts '# of questions: ' + qna.num_of_questions.to_s
+		puts '# of words in questions: ' + qna.num_of_words_in_questions.to_s
 		puts '------------------------'
+
+		count_word_frequence(qna.sentences, word_freq) if qna.participant.type == 'A'
+		#count_word_frequence(qna.sentences, word_freq)
 	end
+
+	repeated_words = {}
+	word_freq.each { |w, c| repeated_words[w] = c if c > 1 }
+	out repeated_words.sort_by {|k,v| v}.reverse
 end
 
 usage unless File.directory?(ARGV[0])
