@@ -10,10 +10,11 @@ class Participant
 
 	def initialize(name_str, firm_title_str, type)
 		@first_name, @last_name = name_str.split(' ', 2)
-		@firm, @title = firm_title_str.split(' - ', 2)
+		@firm, @title = firm_title_str.split(' - ', 2) unless firm_title_str.nil?
 		@type = type
 	end
 
+	## ex: Thomas A. Moore - Biopure Corporation - President, CEO and Director
 	def to_s
 		str = @first_name
 		str += ' ' + @last_name unless @last_name.nil?
@@ -110,7 +111,7 @@ def parse(file)
 	doc.paragraphs.each do |p|
 		pg = p.range.text.scan(/[[:print:]]/).join.strip
 		pgs << pg
-		break if pg == "PRESENTATION"
+		break if pg =~ /PRESENTATION|TRANSCRIPT/
 	end
 	doc.sentences.each do |s|
 		sent = s.text.scan(/[[:print:]]/).join.strip
@@ -136,40 +137,31 @@ def parse(file)
 	puts "------------------"
 
 	## processing participants
-	tmp = pgs.join('|')
-	#out tmp
-	cps = tmp.match(/CORPORATE PARTICIPANTS\|(.*)CONFERENCE CALL PARTICIPANTS/)[1].gsub(/ \(\w*\)/, '').split('|')
-	ccps = tmp.match(/CONFERENCE CALL PARTICIPANTS\|(.*)PRESENTATION/)[1].gsub(/ \(\w*\)/, '').split('|')
+	pgs_str = pgs.join('|')
+	#pp pgs_str
+	cps = pgs_str.match(/CORPORATE PARTICIPANTS\|(.*)CONFERENCE CALL PARTICIPANTS\|/)[1].gsub(/ \(\w*\)/, '').split('|')
+	ccps = pgs_str.match(/CONFERENCE CALL PARTICIPANTS\|(.*)(PRESENTATION|TRANSCRIPT)/)[1].gsub(/ \(\w*\)/, '').split('|')
 
 	#pp cps
 	#pp ccps
 
+	## create participant objects
 	pps = {}
 	# create cps
-	unless cps.length.even?
-		err(File.basename(file) + " skipped: Company is missing [Corp Participants]")
-		return
-	end
 	(0..cps.length - 1).step(2).each do |i|
 		pp = Participant.new(cps[i], cps[i+1], 'C')
 		pps[pp.to_s] = pp
 	end
-
 	# create ccps
-	unless ccps.length.even?
-		err(File.basename(file) + " skipped: Company is missing [Conf Call Participants]")
-		return
-	end
 	(0..ccps.length - 1).step(2).each do |i|
 		pp = Participant.new(ccps[i], ccps[i+1], 'A')
 		pps[pp.to_s] = pp
 	end
 	pps['Operator'] = 'Operator'
-
 	pp pps
 
-	## find and senatize Q and A contents
-	qna_found = sents.join('|').gsub('|-', ' -').squeeze(' ').match(/QUESTION AND ANSWER\|(.*DISCLAIMER)/)
+	## find Q&A
+	qna_found = sents.join('|').squeeze(' ').match(/QUESTION AND ANSWER\|(.*DISCLAIMER)/)
 	#out qna_found
 
 	## do not proceed if no Q&A is found
@@ -179,7 +171,23 @@ def parse(file)
 		return
 	end
 
-	qna_contents = qna_found[1].split('|')
+	## senatize Q&A
+	#
+	# say we have a participant named: Thomas A. Moore
+	# ms word stupidly think "Thomas A." is a sentence, since it have a dot in it
+	# as such, after the previous "sents.join('|')" call, "Thomas A. Moore" will turn into
+	# "Thomas A.|Moore" in string "qna_str"
+	# 
+	qna_str = qna_found[1]
+	pps.each_key do |k|
+		if k =~ /\. /
+			#pp k
+			sub = k.gsub('. ','.|')
+			#pp sub
+			qna_str.gsub!(sub, k)
+		end
+	end
+	qna_contents = qna_str.split('|')
 	#out qna_contents
 
 	search_strings = pps.keys
