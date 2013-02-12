@@ -77,13 +77,13 @@ def err(msg)
 end
 
 def to_csv(content, path)
-  unless File.exist?(path)
-    CSV.open(path, 'wb') do |csv|
-      content.each do |arr|
-        csv << arr
-      end
-    end
-  end
+	#unless File.exist?(path)
+		CSV.open(path, 'wb') do |csv|
+			content.each do |arr|
+				csv << arr
+			end
+		end
+	#end
 end
 
 def count_word_frequence(sentences, word_freq={})
@@ -257,6 +257,6 @@ else
 end
 
 #=end
-out @word_freq.sort_by {|k,v| v}.reverse
+to_csv(@word_freq.to_a.sort {|a,b| b[1] <=> a[1]}, 'c:\temp\out.csv')
 
 @word.quit
