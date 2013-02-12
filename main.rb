@@ -15,7 +15,9 @@ class Participant
 	end
 
 	def to_s
-		str = @first_name + ' ' + @last_name + ' - ' + @firm
+		str = @first_name
+		str += ' ' + @last_name unless @last_name.nil?
+		str += ' - ' + @firm unless @firm.nil?
 		str += ' - ' + @title unless @title.nil?
 		return str
 	end
@@ -59,13 +61,18 @@ end
 
 def usage
 	puts 'Usage: ' + File.basename(__FILE__) + ' <directory>'
-	#exit 1
+	exit 1
 end
 
 def out(msg)
 	puts '---------------'
 	pp msg
 	puts '---------------'
+end
+
+def err(msg)
+	@log.error msg
+	out msg
 end
 
 def to_csv(content, path)
@@ -102,7 +109,7 @@ def parse(file)
 	doc = @word.documents.open(file, 'ReadOnly' => true)
 	doc.paragraphs.each do |p|
 		pg = p.range.text.scan(/[[:print:]]/).join.strip
-		pgs << pg unless pg == ''
+		pgs << pg
 		break if pg == "PRESENTATION"
 	end
 	doc.sentences.each do |s|
@@ -111,10 +118,16 @@ def parse(file)
 	end
 	@word.activedocument.close
 
-	#pp pgs
-	reason = pgs[2]
+	## processing headers
+	headers = []
+	pgs.each do |pg|
+		next if pg == ''
+		break if pg == 'CORPORATE PARTICIPANTS'
+		headers << pg
+	end
+	reason = headers[2]
 	ticker = reason.split(' - ')[0]
-	datetime = DateTime.parse(pgs[3].match(/Event Date\/Time: (.*)/)[1])
+	datetime = DateTime.parse(headers[3].match(/Event Date\/Time: (.*)/)[1])
 
 	puts "------------------"
 	puts "Reason: " + reason
@@ -124,13 +137,28 @@ def parse(file)
 
 	## processing participants
 	tmp = pgs.join('|')
+	#out tmp
 	cps = tmp.match(/CORPORATE PARTICIPANTS\|(.*)CONFERENCE CALL PARTICIPANTS/)[1].gsub(/ \(\w*\)/, '').split('|')
 	ccps = tmp.match(/CONFERENCE CALL PARTICIPANTS\|(.*)PRESENTATION/)[1].gsub(/ \(\w*\)/, '').split('|')
 
+	#pp cps
+	#pp ccps
+
 	pps = {}
+	# create cps
+	unless cps.length.even?
+		err(File.basename(file) + " skipped: Company is missing [Corp Participants]")
+		return
+	end
 	(0..cps.length - 1).step(2).each do |i|
 		pp = Participant.new(cps[i], cps[i+1], 'C')
 		pps[pp.to_s] = pp
+	end
+
+	# create ccps
+	unless ccps.length.even?
+		err(File.basename(file) + " skipped: Company is missing [Conf Call Participants]")
+		return
 	end
 	(0..ccps.length - 1).step(2).each do |i|
 		pp = Participant.new(ccps[i], ccps[i+1], 'A')
@@ -138,17 +166,27 @@ def parse(file)
 	end
 	pps['Operator'] = 'Operator'
 
-	## find and senatize Q and A contents
-	qna_contents = sents.join('|').gsub('|-', ' -').squeeze(' ').match(/QUESTION AND ANSWER\|(.*DISCLAIMER)/)[1].split('|')
+	pp pps
 
+	## find and senatize Q and A contents
+	qna_found = sents.join('|').gsub('|-', ' -').squeeze(' ').match(/QUESTION AND ANSWER\|(.*DISCLAIMER)/)
+	#out qna_found
+
+	## do not proceed if no Q&A is found
+	if qna_found.nil?
+		msg = File.basename(file) + " skipped: [Question and Answer] section is missing"
+		err msg
+		return
+	end
+
+	qna_contents = qna_found[1].split('|')
 	#out qna_contents
 
 	search_strings = pps.keys
-	out(search_strings)
+	#out(search_strings)
 
 	current_qna = nil
 	qnas = []
-	word_freq = {}
 
 	qna_contents.each_with_index do |value, index|
 		if value == 'DISCLAIMER'
@@ -171,24 +209,18 @@ def parse(file)
 	#out(qnas)
 	qnas.each do |qna|
 		next if qna.participant == 'Operator'
-		puts '------------------------'
-		puts qna.participant.to_s
-		#puts '# of words: ' + qna.num_of_words(qna.sentences).to_s
-		puts '# of words: ' + qna.num_of_words.to_s
-		puts '# of questions: ' + qna.num_of_questions.to_s
-		puts '# of words in questions: ' + qna.num_of_words_in_questions.to_s
-		puts '------------------------'
+		#puts '------------------------'
+		#puts qna.participant.to_s
+		#puts '# of words: ' + qna.num_of_words.to_s
+		#puts '# of questions: ' + qna.num_of_questions.to_s
+		#puts '# of words in questions: ' + qna.num_of_words_in_questions.to_s
+		#puts '------------------------'
 
-		count_word_frequence(qna.sentences, word_freq) if qna.participant.type == 'A'
-		#count_word_frequence(qna.sentences, word_freq)
+		count_word_frequence(qna.sentences, @word_freq) if qna.participant.type == 'A'
 	end
-
-	repeated_words = {}
-	word_freq.each { |w, c| repeated_words[w] = c if c > 1 }
-	out repeated_words.sort_by {|k,v| v}.reverse
 end
 
-usage unless File.directory?(ARGV[0])
+usage unless File.exist?(ARGV[0])
 
 log_dir = File.expand_path("..",File.dirname(__FILE__))
 @log = Logger.new(File.join(log_dir, 'parse.log'))
@@ -197,16 +229,26 @@ log_dir = File.expand_path("..",File.dirname(__FILE__))
 @word = WIN32OLE.new('Word.Application')
 @word.visible = false
 
-parse(ARGV[0])
-=begin
-Find.find(ARGV[0]) do |path|
-	if File.directory? (path)
-		next
-	else
-		if File.extname(path) == '.doc' and File.basename(path) =~ /^\w/
-			@log.info "Parsing [" + path + "]"
+@word_freq = {}
+#=begin
+input = ARGV[0]
+
+if File.directory?(input)
+	Find.find(input) do |path|
+		if File.directory? (path)
+			next
+		else
+			if File.extname(path) == '.doc' and File.basename(path) =~ /^\w/
+				@log.info "Parsing [" + path + "]"
+				parse(path)
+			end
 		end
 	end
+else
+	parse(input)
 end
-=end
+
+#=end
+out @word_freq.sort_by {|k,v| v}.reverse
+
 @word.quit
