@@ -130,12 +130,12 @@ def login
 	cookie = get_cookie(resp)
 	pp cookie
 
-	show_body(resp)
+	#show_body(resp)
 
 	return http,cookie
 end
 
-def list(http,cookie)
+def events(http,cookie)
 	cookie = cookie + ";filterview=expand"
 	pp cookie
 	headers = {
@@ -156,6 +156,79 @@ def list(http,cookie)
 	show_body(resp)
 end
 
-http,cookie = login
-list(http,cookie)
+def transcripts(cookie)
+	headers = {
+    'User-Agent' => USERAGENT,
+    'Cookie' => cookie
+  }
+	url = URI.parse('http://www.streetevents.com')
+	http = Net::HTTP.new url.host, url.port
+	path = "/transcript/ListView.aspx"
+	resp = http.get2(path, headers)
 
+	#show_body(resp)
+	
+	viewstate = ''
+	resp.body.each_line do |line|
+		if line =~ /_VIEWSTATE/
+			viewstate = /value=\"(.*)\"/.match(line)[1]
+			break
+		end
+	end
+	pp viewstate
+
+	sd1 = 'Feb+01,+2012'
+	sd2 = '02/01/2012'
+	ed1 = 'Feb+22,+2013'
+	ed2 = '02/22/2013'
+
+	data = "__EVENTARGUMENT=&" +
+    "__EVENTTARGET=&" +
+		"__VIEWSTATE=#{ERB::Util.url_encode(viewstate)}&" +
+		"companySearchSilo=8&" +
+		"companySearchText=&" +
+		"companySearchType=1&" +
+		"filterArea%24briefSummaryFilter=on&" +
+		"filterArea%24countryCodeFilter=ALL&" +
+		"filterArea%24ctl01%24ctl00=Feb+01%2C+2012&" +
+		"filterArea%24ctl01%24hiddenDate=#{ERB::Util.url_encode(sd2)}&" +
+		"filterArea%24ctl02%24ctl00=Feb+22%2C+2013&" +
+		"filterArea%24ctl02%24hiddenDate=#{ERB::Util.url_encode(ed2)}&" +
+		"filterArea%24eventTypeFilter%24ctl00=1074003971&" +
+		"filterArea%24eventTypeFilter%24ctl00group1=1074003971&" +
+		"filterArea%24industryCodeFilter=201010&" +
+		"filterArea%24languageFilter=1&" +
+		"filterArea%24transcriptDocumentStatusFilter%24Available=on&" +
+		"filterArea%24watchlistFilter=0&" +
+		"gridTranscriptList%24ctl00%24ddlPages=1&" +
+		"siteId=1"
+	
+	#puts data
+
+	headers = {
+		'User-Agent' => USERAGENT,
+		'Cookie' => cookie,
+		'Referer' => 'http://www.streetevents.com/transcript/ListView.aspx',
+		'Content-Type' => 'application/x-www-form-urlencoded'
+	}
+
+	resp = http.post(path, data, headers)
+end
+
+def get_download_links(resp)
+	links = []
+	resp.body.each_line do |line|
+		if line =~ /text\.thomsonone\.com/
+			#puts line
+			line.scan(/javascript:DownloadDocument\(&#39;\S+&#39;\)/).each do |s|
+				link = /javascript:DownloadDocument\(&#39;(.*)&#39;\)/.match(s)[1]
+				links << link.gsub('amp;','')
+			end
+		end
+	end
+	links
+end
+http,cookie = login
+resp = transcripts(cookie)
+#show_body(resp)
+pp get_download_links(resp)
