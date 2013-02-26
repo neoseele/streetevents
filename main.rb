@@ -78,6 +78,14 @@ def to_csv(content, path)
   end
 end
 
+def append_to_csv(content, path)
+	CSV::Writer.generate(path) do |csv|
+		content.each do |arr|
+			csv << arr
+		end
+	end
+end
+
 def count_word_frequence(sentences, word_freq={})
 	sentences.each do |s|
 		s.split(' ').each do |w|
@@ -103,7 +111,7 @@ def parse(file)
 	doc.paragraphs.each do |p|
 		pg = p.range.text.scan(/[[:print:]]/).join.strip
 		pgs << pg unless pg == ''
-		break if pg == "PRESENTATION"
+		break if pg == "PRESENTATION" or pg == "TRANSCRIPT"
 	end
 	doc.sentences.each do |s|
 		sent = s.text.scan(/[[:print:]]/).join.strip
@@ -123,18 +131,43 @@ def parse(file)
 	puts "------------------"
 
 	## processing participants
-	tmp = pgs.join('|')
-	cps = tmp.match(/CORPORATE PARTICIPANTS\|(.*)CONFERENCE CALL PARTICIPANTS/)[1].gsub(/ \(\w*\)/, '').split('|')
-	ccps = tmp.match(/CONFERENCE CALL PARTICIPANTS\|(.*)PRESENTATION/)[1].gsub(/ \(\w*\)/, '').split('|')
+	#tmp = pgs.join('|')
+	#cps = tmp.match(/CORPORATE PARTICIPANTS\|(.*)CONFERENCE CALL PARTICIPANTS/)[1].gsub(/ \(\w*\)/, '').split('|')
+	#ccps = tmp.match(/CONFERENCE CALL PARTICIPANTS\|(.*)PRESENTATION/)[1].gsub(/ \(\w*\)/, '').split('|')
+	
+	cps = []
+	ccps = []
+	
+	p_flag = nil
+	pgs.each do |pg|
+		if pg == "CORPORATE PARTICIPANTS"
+			p_flag = 'cp'
+			next
+		end
+
+		if pg == "CONFERENCE CALL PARTICIPANTS"
+			p_flag = 'ccp'
+			next
+		end
+
+		break if pg == "PRESENTATION" or pg == "TRANSCRIPT"
+
+		cps << pg.gsub(/ \(\w*\)/, '') if p_flag == 'cp'
+		ccps << pg.gsub(/ \(\w*\)/, '') if p_flag == 'ccp'
+	end
 
 	pps = {}
-	(0..cps.length - 1).step(2).each do |i|
-		pp = Participant.new(cps[i], cps[i+1], 'C')
-		pps[pp.to_s] = pp
+	unless cps.length == 0
+		(0..cps.length - 1).step(2).each do |i|
+			pp = Participant.new(cps[i], cps[i+1], 'C')
+			pps[pp.to_s] = pp
+		end
 	end
-	(0..ccps.length - 1).step(2).each do |i|
-		pp = Participant.new(ccps[i], ccps[i+1], 'A')
-		pps[pp.to_s] = pp
+	unless ccps.length == 0
+		(0..ccps.length - 1).step(2).each do |i|
+			pp = Participant.new(ccps[i], ccps[i+1], 'A')
+			pps[pp.to_s] = pp
+		end
 	end
 	pps['Operator'] = 'Operator'
 
@@ -148,7 +181,6 @@ def parse(file)
 
 	current_qna = nil
 	qnas = []
-	word_freq = {}
 
 	qna_contents.each_with_index do |value, index|
 		if value == 'DISCLAIMER'
@@ -169,6 +201,8 @@ def parse(file)
 	end
 
 	#out(qnas)
+	word_freq = {}
+
 	qnas.each do |qna|
 		next if qna.participant == 'Operator'
 		puts '------------------------'
@@ -179,13 +213,25 @@ def parse(file)
 		puts '# of words in questions: ' + qna.num_of_words_in_questions.to_s
 		puts '------------------------'
 
-		count_word_frequence(qna.sentences, word_freq) if qna.participant.type == 'A'
+		#count_word_frequence(qna.sentences, word_freq) if qna.participant.type == 'A'
 		#count_word_frequence(qna.sentences, word_freq)
 	end
 
-	repeated_words = {}
-	word_freq.each { |w, c| repeated_words[w] = c if c > 1 }
-	out repeated_words.sort_by {|k,v| v}.reverse
+	#repeated_words = {}
+	#word_freq.each { |w, c| repeated_words[w] = c if c > 1 }
+	#out repeated_words.sort_by {|k,v| v}.reverse
+	
+	## build the csv array
+	csv = [['ticker','dt','reason','ca','first_nm','surname','affln','firm','jobt','analyst_showsup','no_words','no_questions','no_words_having_questions']]
+	qnas.each do |qna|
+		next if qna.participant == 'Operator'
+		p = qna.participant
+
+		csv << [ticker,datetime,reason,p.type,p.first_name,p.last_name,p.to_s,p.firm,p.title,'?',qna.num_of_words,qna.num_of_questions,qna.num_of_words_in_questions]
+	end
+	pp csv
+	#append_to_csv(csv,'test.csv')
+	
 end
 
 usage unless File.directory?(ARGV[0])
