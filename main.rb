@@ -5,17 +5,21 @@ require 'find'
 require 'csv'
 require 'logger'
 
+
 class Participant
 	attr_accessor :first_name, :last_name, :firm, :title, :type
 
 	def initialize(name_str, firm_title_str, type)
 		@first_name, @last_name = name_str.split(' ', 2)
-		@firm, @title = firm_title_str.split(' - ', 2)
+		@firm, @title = firm_title_str.split(' - ', 2) unless firm_title_str.nil?
 		@type = type
 	end
 
+	## ex: Thomas A. Moore - Biopure Corporation - President, CEO and Director
 	def to_s
-		str = @first_name + ' ' + @last_name + ' - ' + @firm
+		str = @first_name
+		str += ' ' + @last_name unless @last_name.nil?
+		str += ' - ' + @firm unless @firm.nil?
 		str += ' - ' + @title unless @title.nil?
 		return str
 	end
@@ -29,9 +33,14 @@ class Qna
 	end
 
 	def questions
+		qw_regex = "(what|where|when|which|who|whom|would|do|does|doesn't|is|isn't|can|could|to what exten|should)\W+"
 		questions = []
 		@sentences.each do |s|
-			questions << s if s =~ /\?/
+			if s =~ /\?/
+				questions << s 
+				next
+			end
+			questions << s if s.downcase =~ /^#{qw_regex}/
 		end
 		questions
 	end
@@ -68,7 +77,7 @@ def out(msg)
 	puts '---------------'
 end
 
-def to_csv(content, path)
+def write_to_csv(content, path)
   unless File.exist?(path)
     CSV.open(path, 'wb') do |csv|
       content.each do |arr|
@@ -76,14 +85,6 @@ def to_csv(content, path)
       end
     end
   end
-end
-
-def append_to_csv(content, path)
-	CSV::Writer.generate(path) do |csv|
-		content.each do |arr|
-			csv << arr
-		end
-	end
 end
 
 def count_word_frequence(sentences, word_freq={})
@@ -111,7 +112,7 @@ def parse(file)
 	doc.paragraphs.each do |p|
 		pg = p.range.text.scan(/[[:print:]]/).join.strip
 		pgs << pg unless pg == ''
-		break if pg == "PRESENTATION" or pg == "TRANSCRIPT"
+		break if pg == "PRESENTATION" or pg == "TRANSCRIPT" or pg == "QUESTION AND ANSWER"
 	end
 	doc.sentences.each do |s|
 		sent = s.text.scan(/[[:print:]]/).join.strip
@@ -123,6 +124,7 @@ def parse(file)
 	reason = pgs[2]
 	ticker = reason.split(' - ')[0]
 	datetime = DateTime.parse(pgs[3].match(/Event Date\/Time: (.*)/)[1])
+	dt = datetime.strftime('%Y%m%d')
 
 	puts "------------------"
 	puts "Reason: " + reason
@@ -150,7 +152,7 @@ def parse(file)
 			next
 		end
 
-		break if pg == "PRESENTATION" or pg == "TRANSCRIPT"
+		break if pg == "PRESENTATION" or pg == "TRANSCRIPT" or pg == "QUESTION AND ANSWER"
 
 		cps << pg.gsub(/ \(\w*\)/, '') if p_flag == 'cp'
 		ccps << pg.gsub(/ \(\w*\)/, '') if p_flag == 'ccp'
@@ -227,11 +229,11 @@ def parse(file)
 		next if qna.participant == 'Operator'
 		p = qna.participant
 
-		csv << [ticker,datetime,reason,p.type,p.first_name,p.last_name,p.to_s,p.firm,p.title,'?',qna.num_of_words,qna.num_of_questions,qna.num_of_words_in_questions]
+		csv << [ticker,dt,reason,p.type,p.first_name,p.last_name,p.to_s,p.firm,p.title,'?',qna.num_of_words,qna.num_of_questions,qna.num_of_words_in_questions]
 	end
-	pp csv
-	#append_to_csv(csv,'test.csv')
-	
+
+	## write to csv
+	write_to_csv(csv,'test.csv')
 end
 
 usage unless File.directory?(ARGV[0])
