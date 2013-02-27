@@ -132,11 +132,16 @@ def parse(file)
 	puts "DateTime: " + datetime.strftime('%Y%m%d')
 	puts "------------------"
 
+	## find and senatize Q and A contents
+	#qna_contents = sents.join('|').gsub('|-', ' -').squeeze(' ').match(/QUESTION AND ANSWER\|(.*DISCLAIMER)/)[1].split('|')
+	qna_contents = sents.join('|').squeeze(' ').match(/QUESTION AND ANSWER\|(.*DISCLAIMER)/)[1]
+
+	# dealing the affiliation that have the annoying '.'
+	# for some reason, doc.sentences break the word doc into sentences by '.'
+	# which break the following affiliation into 2 sentences
+	# ie. Quintin Lai  - Robert W. Baird - Analyst
+
 	## processing participants
-	#tmp = pgs.join('|')
-	#cps = tmp.match(/CORPORATE PARTICIPANTS\|(.*)CONFERENCE CALL PARTICIPANTS/)[1].gsub(/ \(\w*\)/, '').split('|')
-	#ccps = tmp.match(/CONFERENCE CALL PARTICIPANTS\|(.*)PRESENTATION/)[1].gsub(/ \(\w*\)/, '').split('|')
-	
 	cps = []
 	ccps = []
 	
@@ -173,9 +178,8 @@ def parse(file)
 	end
 	pps['Operator'] = 'Operator'
 
-	## find and senatize Q and A contents
-	qna_contents = sents.join('|').gsub('|-', ' -').squeeze(' ').match(/QUESTION AND ANSWER\|(.*DISCLAIMER)/)[1].split('|')
-
+	
+	
 	#out qna_contents
 
 	search_strings = pps.keys
@@ -233,7 +237,7 @@ def parse(file)
 	end
 
 	## write to csv
-	write_to_csv(csv,'test.csv')
+	#write_to_csv(csv,'test.csv')
 end
 
 usage unless File.directory?(ARGV[0])
