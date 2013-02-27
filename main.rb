@@ -48,7 +48,6 @@ class Qna
 	def num_of_words(sentences=@sentences)
 		count = 0
 		sentences.each do |s|
-			#puts s
 			s.split(' ').each do |w|
 				count += 1 unless w =~ /^\W+$/
 			end
@@ -67,14 +66,22 @@ class Qna
 end
 
 def usage
-	puts 'Usage: ' + File.basename(__FILE__) + ' <directory>'
-	#exit 1
+	puts 'Usage: ' + File.basename(__FILE__) + ' <file|directory>'
+	exit 1
 end
 
 def out(msg)
-	puts '---------------'
-	pp msg
-	puts '---------------'
+	return if DEBUG == false
+	if msg.is_a? String
+		puts msg
+	else
+		pp msg
+	end
+end
+
+def err(msg)
+	@log.error msg
+	out msg
 end
 
 def write_to_csv(content, path)
@@ -123,23 +130,17 @@ def parse(file)
 	#pp pgs
 	reason = pgs[2]
 	ticker = reason.split(' - ')[0]
-	datetime = DateTime.parse(pgs[3].match(/Event Date\/Time: (.*)/)[1])
-	dt = datetime.strftime('%Y%m%d')
+	dt_string = pgs[3][/Event Date\/Time: (.*)/,1]
+	#dt_format = "%b. %d. %Y / %l:%M%P %Z"
+	#datetime = DateTime.strptime(dt_string,dt_format)
+	datetime = DateTime.parse(dt_string)
+	dt = datetime.strftime('%Y-%m-%d %H:%M') + ' ' + dt_string[/ ([A-Z]+)$/,1]
 
-	puts "------------------"
-	puts "Reason: " + reason
-	puts "Ticker: " + ticker
-	puts "DateTime: " + datetime.strftime('%Y%m%d')
-	puts "------------------"
-
-	## find and senatize Q and A contents
-	#qna_contents = sents.join('|').gsub('|-', ' -').squeeze(' ').match(/QUESTION AND ANSWER\|(.*DISCLAIMER)/)[1].split('|')
-	qna_contents = sents.join('|').squeeze(' ').match(/QUESTION AND ANSWER\|(.*DISCLAIMER)/)[1]
-
-	# dealing the affiliation that have the annoying '.'
-	# for some reason, doc.sentences break the word doc into sentences by '.'
-	# which break the following affiliation into 2 sentences
-	# ie. Quintin Lai  - Robert W. Baird - Analyst
+	out "------------------"
+	out "Reason: " + reason
+	out "Ticker: " + ticker
+	out "DateTime: " + datetime.strftime('%Y%m%d')
+	out "------------------"
 
 	## processing participants
 	cps = []
@@ -178,12 +179,39 @@ def parse(file)
 	end
 	pps['Operator'] = 'Operator'
 
-	
+	## find Q&A
+	qna_found = sents.join('|').squeeze(' ').match(/QUESTION AND ANSWER\|(.*DISCLAIMER)/)
+	out qna_found
+
+	## do not proceed if no Q&A is found
+	if qna_found.nil?
+		msg = File.basename(file) + " skipped: [Question and Answer] section is missing"
+		err msg
+		return
+	end
+
+	## senatize Q&A
+	#
+	# say we have a participant named: Thomas A. Moore
+	# ms word stupidly think "Thomas A." is a sentence, since it have a dot in it
+	# as such, after the previous "sents.join('|')" call, "Thomas A. Moore" will turn into
+	# "Thomas A.|Moore" in string "qna_str"
+	# 
+	qna_str = qna_found[1]
+	pps.each_key do |k|
+		if k =~ /\. /
+			#pp k
+			sub = k.gsub('. ','.|')
+			#pp sub
+			qna_str.gsub!(sub, k)
+		end
+	end
+	qna_contents = qna_str.split('|')	
 	
 	#out qna_contents
 
 	search_strings = pps.keys
-	out(search_strings)
+	#out(search_strings)
 
 	current_qna = nil
 	qnas = []
@@ -207,17 +235,18 @@ def parse(file)
 	end
 
 	#out(qnas)
-	word_freq = {}
+	
+	#word_freq = {}
 
 	qnas.each do |qna|
 		next if qna.participant == 'Operator'
-		puts '------------------------'
-		puts qna.participant.to_s
-		#puts '# of words: ' + qna.num_of_words(qna.sentences).to_s
-		puts '# of words: ' + qna.num_of_words.to_s
-		puts '# of questions: ' + qna.num_of_questions.to_s
-		puts '# of words in questions: ' + qna.num_of_words_in_questions.to_s
-		puts '------------------------'
+		out '------------------------'
+		out qna.participant.to_s
+		#out '# of words: ' + qna.num_of_words(qna.sentences).to_s
+		out '# of words: ' + qna.num_of_words.to_s
+		out '# of questions: ' + qna.num_of_questions.to_s
+		out '# of words in questions: ' + qna.num_of_words_in_questions.to_s
+		out '------------------------'
 
 		#count_word_frequence(qna.sentences, word_freq) if qna.participant.type == 'A'
 		#count_word_frequence(qna.sentences, word_freq)
@@ -237,10 +266,15 @@ def parse(file)
 	end
 
 	## write to csv
-	#write_to_csv(csv,'test.csv')
+	csv_name = file.gsub(/.doc$/, '.csv')
+	write_to_csv(csv,csv_name)
 end
 
-usage unless File.directory?(ARGV[0])
+## * entry * ##
+
+usage unless File.exist?(ARGV[0])
+
+DEBUG = false
 
 log_dir = File.expand_path("..",File.dirname(__FILE__))
 @log = Logger.new(File.join(log_dir, 'parse.log'))
@@ -249,16 +283,21 @@ log_dir = File.expand_path("..",File.dirname(__FILE__))
 @word = WIN32OLE.new('Word.Application')
 @word.visible = false
 
-parse(ARGV[0])
-=begin
-Find.find(ARGV[0]) do |path|
-	if File.directory? (path)
-		next
-	else
-		if File.extname(path) == '.doc' and File.basename(path) =~ /^\w/
-			@log.info "Parsing [" + path + "]"
+input = ARGV[0]
+
+if File.directory?(input)
+	Find.find(input) do |path|
+		if File.directory? (path)
+			next
+		else
+			if File.extname(path) == '.doc' and File.basename(path) =~ /^\w/
+				@log.info "Parsing [" + path + "]"
+				parse(path)
+			end
 		end
 	end
+else
+	parse(input)
 end
-=end
+
 @word.quit
