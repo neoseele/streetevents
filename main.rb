@@ -71,7 +71,7 @@ def usage
 end
 
 def out(msg)
-	return if DEBUG == false
+	return unless DEBUG
 	if msg.is_a? String
 		puts msg
 	else
@@ -134,7 +134,8 @@ def parse(file)
 	#dt_format = "%b. %d. %Y / %l:%M%P %Z"
 	#datetime = DateTime.strptime(dt_string,dt_format)
 	datetime = DateTime.parse(dt_string)
-	dt = datetime.strftime('%Y-%m-%d %H:%M') + ' ' + dt_string[/ ([A-Z]+)$/,1]
+	date_str = datetime.strftime('%Y-%m-%d')
+	time_str = datetime.strftime('%H:%M') + ' ' + dt_string[/ ([A-Z]+)$/,1]
 
 	out "------------------"
 	out "Reason: " + reason
@@ -257,20 +258,20 @@ def parse(file)
 	#out repeated_words.sort_by {|k,v| v}.reverse
 	
 	## build the csv array
-	csv = [['ticker','dt','reason','ca','first_nm','surname','affln','firm','jobt','analyst_showsup','no_words','no_questions','no_words_having_questions']]
+	#csv = [['ticker','date','time','reason','ca','first_nm','surname','affln','firm','jobt','analyst_showsup','no_words','no_questions','no_words_having_questions']]
 	qnas.each do |qna|
 		next if qna.participant == 'Operator'
 		p = qna.participant
 
-		csv << [ticker,dt,reason,p.type,p.first_name,p.last_name,p.to_s,p.firm,p.title,'?',qna.num_of_words,qna.num_of_questions,qna.num_of_words_in_questions]
+		@csv << [ticker,date_str,time_str,reason,p.type,p.first_name,p.last_name,p.to_s,p.firm,p.title,qna.num_of_words,qna.num_of_questions,qna.num_of_words_in_questions]
 	end
 
 	## write to csv
-	csv_name = file.gsub(/.doc$/, '.csv')
-	write_to_csv(csv,csv_name)
+	#csv_name = file.gsub(/.doc$/, '.csv')
+	#write_to_csv(csv,csv_name)
 end
 
-## * entry * ##
+## ***********
 
 usage unless File.exist?(ARGV[0])
 
@@ -282,6 +283,8 @@ log_dir = File.expand_path("..",File.dirname(__FILE__))
 
 @word = WIN32OLE.new('Word.Application')
 @word.visible = false
+
+@csv = [['ticker','date','time','reason','ca','first_nm','surname','affln','firm','jobt','no_words','no_questions','no_words_having_questions']]
 
 input = ARGV[0]
 
@@ -299,5 +302,8 @@ if File.directory?(input)
 else
 	parse(input)
 end
+
+## write to csv
+write_to_csv(@csv, 'out.csv')
 
 @word.quit
