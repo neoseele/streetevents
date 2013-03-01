@@ -33,7 +33,7 @@ class Qna
 	end
 
 	def questions
-		qw_regex = "(what|where|when|which|who|whom|would|do|does|doesn't|is|isn't|can|could|to what exten|should)\W+"
+		qw_regex = "(what|where|when|which|who|whom|would|do|does|doesn't|is|isn't|can|could|to what exten|should|was|has|how|which|if)\W+"
 		questions = []
 		@sentences.each do |s|
 			if s =~ /\?/
@@ -66,11 +66,11 @@ class Qna
 end
 
 def usage
-	puts 'Usage: ' + File.basename(__FILE__) + ' <file|directory>'
+	puts 'Usage: ' + File.basename(__FILE__) + ' <.doc|directory>'
 	exit 1
 end
 
-def out(msg)
+def debug(msg)
 	return unless DEBUG
 	if msg.is_a? String
 		puts msg
@@ -81,17 +81,15 @@ end
 
 def err(msg)
 	@log.error msg
-	out msg
+	@stdout.error msg
 end
 
 def write_to_csv(content, path)
-  unless File.exist?(path)
-    CSV.open(path, 'wb') do |csv|
-      content.each do |arr|
-        csv << arr
-      end
-    end
-  end
+	CSV.open(path, 'wb') do |csv|
+		content.each do |arr|
+			csv << arr
+		end
+	end
 end
 
 def count_word_frequence(sentences, word_freq={})
@@ -137,11 +135,11 @@ def parse(file)
 	date_str = datetime.strftime('%Y-%m-%d')
 	time_str = datetime.strftime('%H:%M') + ' ' + dt_string[/ ([A-Z]+)$/,1]
 
-	out "------------------"
-	out "Reason: " + reason
-	out "Ticker: " + ticker
-	out "DateTime: " + datetime.strftime('%Y%m%d')
-	out "------------------"
+	debug "------------------"
+	debug "Reason: " + reason
+	debug "Ticker: " + ticker
+	debug "DateTime: " + datetime.strftime('%Y%m%d')
+	debug "------------------"
 
 	## processing participants
 	cps = []
@@ -182,7 +180,7 @@ def parse(file)
 
 	## find Q&A
 	qna_found = sents.join('|').squeeze(' ').match(/QUESTION AND ANSWER\|(.*DISCLAIMER)/)
-	out qna_found
+	debug qna_found
 
 	## do not proceed if no Q&A is found
 	if qna_found.nil?
@@ -201,18 +199,16 @@ def parse(file)
 	qna_str = qna_found[1]
 	pps.each_key do |k|
 		if k =~ /\. /
-			#pp k
 			sub = k.gsub('. ','.|')
-			#pp sub
 			qna_str.gsub!(sub, k)
 		end
 	end
 	qna_contents = qna_str.split('|')	
 	
-	#out qna_contents
+	#debug qna_contents
 
 	search_strings = pps.keys
-	#out(search_strings)
+	#debug search_strings
 
 	current_qna = nil
 	qnas = []
@@ -235,27 +231,25 @@ def parse(file)
 		end
 	end
 
-	#out(qnas)
+	#debug qnas
 	
 	#word_freq = {}
 
 	qnas.each do |qna|
 		next if qna.participant == 'Operator'
-		out '------------------------'
-		out qna.participant.to_s
-		#out '# of words: ' + qna.num_of_words(qna.sentences).to_s
-		out '# of words: ' + qna.num_of_words.to_s
-		out '# of questions: ' + qna.num_of_questions.to_s
-		out '# of words in questions: ' + qna.num_of_words_in_questions.to_s
-		out '------------------------'
-
+		debug '------------------------'
+		debug qna.participant.to_s
+		#debug '# of words: ' + qna.num_of_words(qna.sentences).to_s
+		debug '# of words: ' + qna.num_of_words.to_s
+		debug '# of questions: ' + qna.num_of_questions.to_s
+		debug '# of words in questions: ' + qna.num_of_words_in_questions.to_s
+		debug '------------------------'
 		#count_word_frequence(qna.sentences, word_freq) if qna.participant.type == 'A'
-		#count_word_frequence(qna.sentences, word_freq)
 	end
 
 	#repeated_words = {}
 	#word_freq.each { |w, c| repeated_words[w] = c if c > 1 }
-	#out repeated_words.sort_by {|k,v| v}.reverse
+	#debug repeated_words.sort_by {|k,v| v}.reverse
 	
 	## build the csv array
 	#csv = [['ticker','date','time','reason','ca','first_nm','surname','affln','firm','jobt','analyst_showsup','no_words','no_questions','no_words_having_questions']]
@@ -271,39 +265,52 @@ def parse(file)
 	#write_to_csv(csv,csv_name)
 end
 
-## ***********
+##### main
 
 usage unless File.exist?(ARGV[0])
 
 DEBUG = false
 
-log_dir = File.expand_path("..",File.dirname(__FILE__))
-@log = Logger.new(File.join(log_dir, 'parse.log'))
+log_dt_format = "%Y-%m-%d %H:%M:%S"
+#log_dir = File.expand_path("..",File.dirname(__FILE__))
+@log = Logger.new('parse.log')
+@log.datetime_format = log_dt_format
 @log.level = Logger::INFO
+
+@stdout = Logger.new(STDOUT)
+@stdout.datetime_format = log_dt_format
+@stdout.level = Logger::DEBUG
 
 @word = WIN32OLE.new('Word.Application')
 @word.visible = false
 
 @csv = [['ticker','date','time','reason','ca','first_nm','surname','affln','firm','jobt','no_words','no_questions','no_words_having_questions']]
 
-input = ARGV[0]
+@input = ARGV[0]
+@output = @input.downcase.gsub(' ','_').gsub(/.doc$/,'') + '.csv'
 
-if File.directory?(input)
-	Find.find(input) do |path|
+if File.directory?(@input)
+	Find.find(@input) do |path|
 		if File.directory? (path)
 			next
 		else
 			if File.extname(path) == '.doc' and File.basename(path) =~ /^\w/
-				@log.info "Parsing [" + path + "]"
+				msg = "Parsing [" + path + "]"
+				@log.info msg
+				@stdout.info msg
 				parse(path)
 			end
 		end
 	end
 else
-	parse(input)
+	usage unless File.extname(@input) == '.doc'
+	msg = "Parsing [" + @input + "]"
+	@log.info msg
+	@stdout.info msg
+	parse(@input)
 end
 
 ## write to csv
-write_to_csv(@csv, 'out.csv')
+write_to_csv(@csv, @output)
 
 @word.quit
