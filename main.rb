@@ -5,6 +5,7 @@ require 'find'
 require 'csv'
 require 'logger'
 
+### classes
 
 class Participant
 	attr_accessor :first_name, :last_name, :firm, :title, :type
@@ -65,8 +66,10 @@ class Qna
 	
 end
 
+### functions
+
 def usage
-	puts 'Usage: ' + File.basename(__FILE__) + ' <.doc|directory>'
+	puts 'Usage: ' + File.basename(__FILE__) + ' <directory>'
 	exit 1
 end
 
@@ -125,12 +128,10 @@ def parse(file)
 	end
 	@word.activedocument.close
 
-	#pp pgs
+	## find ticker
 	reason = pgs[2]
 	ticker = reason.split(' - ')[0]
 	dt_string = pgs[3][/Event Date\/Time: (.*)/,1]
-	#dt_format = "%b. %d. %Y / %l:%M%P %Z"
-	#datetime = DateTime.strptime(dt_string,dt_format)
 	datetime = DateTime.parse(dt_string)
 	date_str = datetime.strftime('%Y-%m-%d')
 	time_str = datetime.strftime('%H:%M') + ' ' + dt_string[/ ([A-Z]+)$/,1]
@@ -141,7 +142,7 @@ def parse(file)
 	debug "DateTime: " + datetime.strftime('%Y%m%d')
 	debug "------------------"
 
-	## processing participants
+	## find participants
 	cps = []
 	ccps = []
 	
@@ -205,11 +206,7 @@ def parse(file)
 	end
 	qna_contents = qna_str.split('|')	
 	
-	#debug qna_contents
-
 	search_strings = pps.keys
-	#debug search_strings
-
 	current_qna = nil
 	qnas = []
 
@@ -231,48 +228,31 @@ def parse(file)
 		end
 	end
 
-	#debug qnas
-	
-	#word_freq = {}
-
 	qnas.each do |qna|
 		next if qna.participant == 'Operator'
 		debug '------------------------'
 		debug qna.participant.to_s
-		#debug '# of words: ' + qna.num_of_words(qna.sentences).to_s
 		debug '# of words: ' + qna.num_of_words.to_s
 		debug '# of questions: ' + qna.num_of_questions.to_s
 		debug '# of words in questions: ' + qna.num_of_words_in_questions.to_s
 		debug '------------------------'
-		#count_word_frequence(qna.sentences, word_freq) if qna.participant.type == 'A'
 	end
 
-	#repeated_words = {}
-	#word_freq.each { |w, c| repeated_words[w] = c if c > 1 }
-	#debug repeated_words.sort_by {|k,v| v}.reverse
-	
 	## build the csv array
-	#csv = [['ticker','date','time','reason','ca','first_nm','surname','affln','firm','jobt','analyst_showsup','no_words','no_questions','no_words_having_questions']]
 	qnas.each do |qna|
 		next if qna.participant == 'Operator'
 		p = qna.participant
-
 		@csv << [ticker,date_str,time_str,reason,p.type,p.first_name,p.last_name,p.to_s,p.firm,p.title,qna.num_of_words,qna.num_of_questions,qna.num_of_words_in_questions]
 	end
-
-	## write to csv
-	#csv_name = file.gsub(/.doc$/, '.csv')
-	#write_to_csv(csv,csv_name)
 end
 
-##### main
+### main
 
-usage unless File.exist?(ARGV[0])
+usage unless ARGV.length == 1 and File.directory?(ARGV[0])
 
 DEBUG = false
 
 log_dt_format = "%Y-%m-%d %H:%M:%S"
-#log_dir = File.expand_path("..",File.dirname(__FILE__))
 @log = Logger.new('parse.log')
 @log.datetime_format = log_dt_format
 @log.level = Logger::INFO
@@ -286,31 +266,25 @@ log_dt_format = "%Y-%m-%d %H:%M:%S"
 
 @csv = [['ticker','date','time','reason','ca','first_nm','surname','affln','firm','jobt','no_words','no_questions','no_words_having_questions']]
 
-@input = ARGV[0]
-@output = @input.downcase.gsub(' ','_').gsub(/.doc$/,'') + '.csv'
+input = ARGV[0]
+output_dir = File.dirname(input)
+output_file = File.basename(input).gsub(/\W+/,'_') + '.csv'
+output = File.join(output_dir, output_file)
 
-if File.directory?(@input)
-	Find.find(@input) do |path|
-		if File.directory? (path)
-			next
-		else
-			if File.extname(path) == '.doc' and File.basename(path) =~ /^\w/
-				msg = "Parsing [" + path + "]"
-				@log.info msg
-				@stdout.info msg
-				parse(path)
-			end
+Find.find(input) do |path|
+	if File.directory? (path)
+		next
+	else
+		if File.extname(path) == '.doc' and File.basename(path) =~ /^\w/
+			msg = "Parsing [" + path + "]"
+			@log.info msg
+			@stdout.info msg
+			parse(path)
 		end
 	end
-else
-	usage unless File.extname(@input) == '.doc'
-	msg = "Parsing [" + @input + "]"
-	@log.info msg
-	@stdout.info msg
-	parse(@input)
 end
 
 ## write to csv
-write_to_csv(@csv, @output)
+write_to_csv(@csv, output)
 
 @word.quit
