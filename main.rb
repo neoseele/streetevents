@@ -133,8 +133,8 @@ def parse(file)
 	ticker = reason.split(' - ')[0]
 	dt_string = pgs[3][/Event Date\/Time: (.*)/,1]
 	datetime = DateTime.parse(dt_string)
-	date_str = datetime.strftime('%Y-%m-%d')
-	time_str = datetime.strftime('%H:%M') + ' ' + dt_string[/ ([A-Z]+)$/,1]
+	date_str = datetime.nil? ? 'unknown' : datetime.strftime('%Y-%m-%d')
+	time_str = datetime.nil? ? 'unknown' : datetime.strftime('%H:%M')
 
 	debug "------------------"
 	debug "Reason: " + reason
