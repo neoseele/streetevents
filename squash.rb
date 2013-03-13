@@ -130,10 +130,10 @@ end
 
 #pp qas.length
 
-@csv = [['ticker','date','reason','ca','first_nm','surname','affln','firm','jobt','no_words','no_questions','no_words_having_questions']]
+@csv = [['ticker','date','reason','ca','first_nm','surname','affln','firm','jobt','no_words','no_questions','no_words_having_questions','no_people_respond']]
 
 qas.each do |qa|
-	@csv << qa.q.to_a
+	@csv << qa.q.to_a + [qa.a.length]
 	qa.a.values.each do |e|
 		@csv << e.to_a
 	end
