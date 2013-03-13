@@ -71,12 +71,7 @@ rows = CSV.read(input, {:headers => :false})
 qas = []
 current_qa = nil
 
-#i = 10
-
 rows.each do |r|
-	#i -= 1
-	#break if i <= 0
-
 	e = Entry.new(r)
 	
 	# first q
@@ -91,7 +86,6 @@ rows.each do |r|
 	current_q = current_qa.q
 
 	# ca => A
-	
 	if e.ca == 'A'
 		# same ticker, same ca, same full_name
 		if e.same_tk_ca_name? current_q
@@ -108,8 +102,6 @@ rows.each do |r|
 	end
 
 	# ca => C
-
-	# same ticker
 	if e.ticker == current_q.ticker
 		current_a = current_qa.a
 
