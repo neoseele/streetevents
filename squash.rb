@@ -63,8 +63,8 @@ usage unless ARGV.length == 1 and File.extname(ARGV[0]) == ".csv"
 
 input = ARGV[0]
 output_dir = File.dirname(input)
-output_file = File.basename(input).gsub(/\W+/,'_') + '_squashed.csv'
-output = File.join(output_dir, output_file)
+output_file = File.basename(input).sub(/\.csv$/,'_squashed.csv')
+output = File.join(output_dir,output_file)
 
 rows = CSV.read(input, {:headers => :false})
 
@@ -140,5 +140,6 @@ qas.each do |qa|
 end
 
 ## write to csv
+puts "* writing results to #{output}"
 write_to_csv(@csv, output)
 
