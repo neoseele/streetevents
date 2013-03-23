@@ -32,6 +32,12 @@ class Entry
 		@ticker == b.ticker and @ca == b.ca and full_name == b.full_name
 	end
 
+	def merge(b)
+		@no_words += b.no_words
+		@no_questions += b.no_questions
+		@no_words_having_questions += b.no_words_having_questions
+	end
+
 	def to_a
 		[@ticker,@date,@reason,@ca,@first_nm,@surname,@affln,@firm,@jobt,@no_words,@no_questions,@no_words_having_questions,@call_date]
 	end
@@ -93,9 +99,7 @@ rows.each do |r|
 	if e.ca == 'A'
 		# same ticker and same full_name ? => merge them
 		if e =~ last_q
-			last_q.no_words += e.no_words
-			last_q.no_questions += e.no_questions
-			last_q.no_words_having_questions += e.no_words_having_questions
+			last_q.merge e
 			next
 		end
 
@@ -116,10 +120,7 @@ rows.each do |r|
 
 		if last_a.key?(e.full_name)
 			# a existing C found in answer hash => merge them 
-			matched_c = last_a[e.full_name]
-			matched_c.no_words += e.no_words
-			matched_c.no_questions += e.no_questions
-			matched_c.no_words_having_questions += e.no_words_having_questions
+			last_a[e.full_name].merge e
 		else
 			# new C found, add it into the answer hash
 			last_qa.a[e.full_name] = e
