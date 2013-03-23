@@ -20,27 +20,30 @@ class Entry
 		@no_words = row[10].to_i
 		@no_questions = row[11].to_i
 		@no_words_having_questions = row[12].to_i
+
+		@call_date = Date.parse(@date).strftime("%Y%m%d")
 	end
 
 	def full_name
 		"#{@first_nm} #{@surname}"
 	end
 
-	def same_tk_ca_name?(b)
+	def =~(b)
 		@ticker == b.ticker and @ca == b.ca and full_name == b.full_name
 	end
 
 	def to_a
-		[@ticker,@date,@reason,@ca,@first_nm,@surname,@affln,@firm,@jobt,@no_words,@no_questions,@no_words_having_questions]
+		[@ticker,@date,@reason,@ca,@first_nm,@surname,@affln,@firm,@jobt,@no_words,@no_questions,@no_words_having_questions,@call_date]
 	end
 end
 
 class Qa
-	attr_accessor :q, :a
+	attr_accessor :q, :a, :order
 	
-	def initialize(q, a={})
+	def initialize(q, order=1, a={})
 		@q = q
 		@a = a
+		@order = order
 	end
 end
 
@@ -69,51 +72,57 @@ output = File.join(output_dir,output_file)
 rows = CSV.read(input, {:headers => :false})
 
 qas = []
-current_qa = nil
+last_qa = nil
+order = 1
 
 rows.each do |r|
 	e = Entry.new(r)
 	
-	# first q
-	if current_qa.nil?
+	# save the first entry into last_qa
+	if last_qa.nil?
 		if e.ca == 'A'
-			current_qa = Qa.new(e)
-			qas << current_qa
+			last_qa = Qa.new(e,order)
+			qas << last_qa
 		end
 		next
 	end
 
-	current_q = current_qa.q
+	last_q = last_qa.q
 
-	# ca => A
+	# current entry is a A
 	if e.ca == 'A'
-		# same ticker, same ca, same full_name
-		if e.same_tk_ca_name? current_q
-			current_q.no_words += e.no_words
-			current_q.no_questions += e.no_questions
-			current_q.no_words_having_questions += e.no_words_having_questions
+		# same ticker and same full_name ? => merge them
+		if e =~ last_q
+			last_q.no_words += e.no_words
+			last_q.no_questions += e.no_questions
+			last_q.no_words_having_questions += e.no_words_having_questions
 			next
 		end
 
-		# create a new qa object for anything else
-		current_qa  = Qa.new(e)
-		qas << current_qa
+		# from this point, either ticker or full_name changed
+		
+		# ticker is the same ? increase order : reset order
+		(e.ticker == last_q.ticker) ? order += 1 : order = 1
+
+		# create a new qa object
+		last_qa  = Qa.new(e,order)
+		qas << last_qa
 		next
 	end
 
-	# ca => C
-	if e.ticker == current_q.ticker
-		current_a = current_qa.a
+	# current entry is a C
+	if e.ticker == last_q.ticker
+		last_a = last_qa.a
 
-		if current_a.key?(e.full_name)
-			# found a existing C in answer hash
-			a = current_a[e.full_name]
-			a.no_words += e.no_words
-			a.no_questions += e.no_questions
-			a.no_words_having_questions += e.no_words_having_questions
+		if last_a.key?(e.full_name)
+			# a existing C found in answer hash => merge them 
+			matched_c = last_a[e.full_name]
+			matched_c.no_words += e.no_words
+			matched_c.no_questions += e.no_questions
+			matched_c.no_words_having_questions += e.no_words_having_questions
 		else
-			# new C
-			current_qa.a[e.full_name] = e
+			# new C found, add it into the answer hash
+			last_qa.a[e.full_name] = e
 		end
 
 	end
@@ -122,10 +131,10 @@ end
 
 #pp qas.length
 
-@csv = [['ticker','date','reason','ca','first_nm','surname','affln','firm','jobt','no_words','no_questions','no_words_having_questions','no_people_respond']]
+@csv = [['ticker','date','reason','ca','first_nm','surname','affln','firm','jobt','no_words','no_questions','no_words_having_questions','call_date','no_people_respond','order']]
 
 qas.each do |qa|
-	@csv << qa.q.to_a + [qa.a.length]
+	@csv << qa.q.to_a + [qa.a.length,qa.order]
 	qa.a.values.each do |e|
 		@csv << e.to_a
 	end
