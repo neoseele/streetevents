@@ -11,10 +11,16 @@ require 'ostruct'
 require 'logger'
 require 'nokogiri'
 
-USERNAME="vragunathan"
-PASSWORD="uniqueens"
+### constants
+
+USERNAME = 'vragunathan'
+PASSWORD = 'uniqueens'
 
 USERAGENT = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.0.1) Gecko/20060111 Firefox/1.5.0.1'
+
+OUTPUT = 'out.txt'
+
+### functions
 
 def view_response(resp)
   if @options[:debug]
@@ -92,9 +98,7 @@ def login
     'Content-Type' => 'application/x-www-form-urlencoded'
   }
 
-	data = "Destinations=&" +
-		"JavascriptURL=&" +
-		"CookieTest=OK" 
+	data = "Destinations=&JavascriptURL=&CookieTest=OK" 
 
 	resp = http.post('/Login.aspx', data, headers)
   #cookie = resp.response['set-cookie'].split('; ')[0]
@@ -109,7 +113,7 @@ def login
 		end
 	end
 
-	puts viewstate
+	#puts viewstate
 
 	data = "__VIEWSTATE=#{ERB::Util.url_encode(viewstate)}&" +
 		"Destinations=&" +
@@ -131,7 +135,6 @@ def login
 	pp cookie
 
 	#show_body(resp)
-
 	return http,cookie
 end
 
@@ -156,7 +159,7 @@ def events(http,cookie)
 	show_body(resp)
 end
 
-def transcripts(cookie)
+def transcripts(cookie, params={})
 	headers = {
     'User-Agent' => USERAGENT,
     'Cookie' => cookie
@@ -175,35 +178,44 @@ def transcripts(cookie)
 			break
 		end
 	end
-	pp viewstate
+	#pp viewstate
 
-	sd1 = 'Feb+01,+2012'
-	sd2 = '02/01/2012'
-	ed1 = 'Feb+22,+2013'
-	ed2 = '02/22/2013'
+	sd = params[:start_date]
+	ed = params[:end_date]
+	cc = params[:country_code]
+	page = params[:page]
 
-	data = "__EVENTARGUMENT=&" +
-    "__EVENTTARGET=&" +
-		"__VIEWSTATE=#{ERB::Util.url_encode(viewstate)}&" +
-		"companySearchSilo=8&" +
-		"companySearchText=&" +
-		"companySearchType=1&" +
-		"filterArea%24briefSummaryFilter=on&" +
-		"filterArea%24countryCodeFilter=ALL&" +
-		"filterArea%24ctl01%24ctl00=Feb+01%2C+2012&" +
-		"filterArea%24ctl01%24hiddenDate=#{ERB::Util.url_encode(sd2)}&" +
-		"filterArea%24ctl02%24ctl00=Feb+22%2C+2013&" +
-		"filterArea%24ctl02%24hiddenDate=#{ERB::Util.url_encode(ed2)}&" +
-		"filterArea%24eventTypeFilter%24ctl00=1074003971&" +
-		"filterArea%24eventTypeFilter%24ctl00group1=1074003971&" +
-		"filterArea%24industryCodeFilter=201010&" +
-		"filterArea%24languageFilter=1&" +
-		"filterArea%24transcriptDocumentStatusFilter%24Available=on&" +
-		"filterArea%24watchlistFilter=0&" +
-		"gridTranscriptList%24ctl00%24ddlPages=1&" +
-		"siteId=1"
+	pp sd
+	pp ed
+	pp cc
+	pp page
+
+	form_enum = {
+		'__EVENTARGUMENT' => '',
+		'__EVENTTARGET' => '',
+		'__VIEWSTATE' => viewstate,
+		'companySearchSilo' => '8',
+		'companySearchText' => '',
+		'companySearchType' => '1',
+		'filterArea$briefSummaryFilter' => 'on',
+		'filterArea$countryCodeFilter' => cc,
+		'filterArea$ctl01$ctl00' => sd.strftime("%b %d, %Y"), # ie. Feb 01, 2012
+		'filterArea$ctl01$hiddenDate' => sd.strftime("%m/%d/%Y"), # ie. 02/01/2012
+		'filterArea$ctl02$ctl00' => ed.strftime("%b %d, %Y"),
+		'filterArea$ctl02$hiddenDate' => ed.strftime("%m/%d/%Y"),
+		'filterArea$eventTypeFilter$ctl00' => '1074003971',
+		'filterArea$eventTypeFilter$ctl00group1' => '1074003971',
+		'filterArea$industryCodeFilter' => '0',
+		'filterArea$languageFilter' => '1',
+		'filterArea$transcriptDocumentStatusFilter$Available' => 'on',
+		'filterArea$watchlistFilter' => '0',
+		'siteId' => '1'
+	}
+	form_enum['gridTranscriptList$ctl00$ddlPages'] = page unless page.nil?
+	data = URI.encode_www_form(form_enum)
 	
 	#puts data
+	#exit 0
 
 	headers = {
 		'User-Agent' => USERAGENT,
@@ -215,7 +227,7 @@ def transcripts(cookie)
 	resp = http.post(path, data, headers)
 end
 
-def get_download_links(resp)
+def fetch_download_links(resp)
 	links = []
 	resp.body.each_line do |line|
 		if line =~ /text\.thomsonone\.com/
@@ -226,9 +238,56 @@ def get_download_links(resp)
 			end
 		end
 	end
-	links
+	links.each do |l|
+		out(l)
+	end
 end
+
+def num_of_pages(resp)
+	doc = Nokogiri::HTML(resp.body)
+	options = doc.css("#gridTranscriptList_ctl00_ddlPages option")
+	return options.length unless options.nil?
+	0
+end
+
+def out(line)
+	File.open(OUTPUT, 'a') do |f|
+		f.puts line
+	end
+end
+
+### main
+
 http,cookie = login
-resp = transcripts(cookie)
-#show_body(resp)
-pp get_download_links(resp)
+
+start_date = Date.new(2007,9,1)
+end_date = Date.new(2007,9,5)
+
+sd_str = start_date.strftime("%Y-%m-%d")
+ed_str = end_date.strftime("%Y-%m-%d")
+
+out("* Earning transcripts (#{sd_str} - #{ed_str})")
+
+(start_date..end_date).to_a.each do |d|
+	d_str = d.strftime("%Y-%m-%d")
+	out("* #{d_str}")
+
+	params = {
+		:start_date => d,
+		:end_date => d.next,
+		:country_code => 'US'
+	}
+	resp = transcripts(cookie,params)
+	nop = num_of_pages(resp)
+
+	if nop > 0
+		(1..nop).to_a.each do |page|
+			params[:page] = page
+			resp = transcripts(cookie,params)
+			fetch_download_links(resp)
+		end
+	else
+		resp = transcripts(cookie,params)
+		fetch_download_links(resp)
+	end
+end

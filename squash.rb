@@ -125,7 +125,6 @@ rows.each do |r|
 			# new C found, add it into the answer hash
 			last_qa.a[e.full_name] = e
 		end
-
 	end
 
 end
