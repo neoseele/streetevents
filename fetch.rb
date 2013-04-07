@@ -302,3 +302,5 @@ puts "* fetching transcript download links (#{sd_str} -> #{ed_str})"
     fetch_links(resp, tag)
   end
 end
+
+puts "* done !"
