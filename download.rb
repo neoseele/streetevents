@@ -5,20 +5,18 @@ require 'net/https'
 require 'uri'
 require 'pp'
 require 'erb'
-require 'csv'
 require 'optparse'
 require 'ostruct'
 require 'logger'
 require 'nokogiri'
+require 'fileutils'
+require 'Date'
 
 ### constants
 
 USERNAME = 'vragunathan'
 PASSWORD = 'uniqueens'
-
 USERAGENT = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.0.1) Gecko/20060111 Firefox/1.5.0.1'
-
-OUTPUT = 'out.txt'
 
 ### functions
 
@@ -33,38 +31,6 @@ def view_response(resp)
   else
     pp resp
   end
-end
-
-def fetch(uri_str, limit = 10)
-  # You should choose better exception.
-  raise ArgumentError, 'HTTP redirect too deep' if limit == 0
-
-  url = URI.parse(uri_str)
-  req = Net::HTTP::Get.new(url.path, { 'User-Agent' => USERAGENT })
-  response = Net::HTTP.start(url.host, url.port) { |http| http.request(req) }
-	cookie = res.response['set-cookie']
-  case response
-  when Net::HTTPSuccess     then response
-  when Net::HTTPRedirection then fetch(response['location'], limit - 1)
-  else
-    response.error!
-  end
-end
-
-def cookieform
-	url = URI.parse('https://www.streetevents.com')
-  http = Net::HTTP.new url.host, url.port
-  http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-  http.use_ssl = true
-  path = '/cookieTest.aspx?Destinations=&LoginPage=%2flogin.aspx&JavascriptURL='
-
-  resp = http.get2(path, {'User-Agent' => USERAGENT})
-  cookie = resp.response['set-cookie']
-
-	pp resp
-	resp.body.each_line do |l|
-		puts l
-	end
 end
 
 def show_body(resp)
@@ -185,10 +151,10 @@ def transcripts(cookie, params={})
 	cc = params[:country_code]
 	page = params[:page]
 
-	pp sd
-	pp ed
-	pp cc
-	pp page
+	#pp sd
+	#pp ed
+	#pp cc
+	#pp page
 
 	form_enum = {
 		'__EVENTARGUMENT' => '',
@@ -227,19 +193,15 @@ def transcripts(cookie, params={})
 	resp = http.post(path, data, headers)
 end
 
-def fetch_download_links(resp)
-	links = []
+def fetch_links(resp, tag)
 	resp.body.each_line do |line|
 		if line =~ /text\.thomsonone\.com/
 			#puts line
 			line.scan(/javascript:DownloadDocument\(&#39;\S+&#39;\)/).each do |s|
 				link = /javascript:DownloadDocument\(&#39;(.*)&#39;\)/.match(s)[1]
-				links << link.gsub('amp;','')
+				out(tag + '|' + link.gsub('amp;',''))
 			end
 		end
-	end
-	links.each do |l|
-		out(l)
 	end
 end
 
@@ -251,26 +213,72 @@ def num_of_pages(resp)
 end
 
 def out(line)
-	File.open(OUTPUT, 'a') do |f|
+	File.open(@output, 'a') do |f|
 		f.puts line
 	end
 end
 
+def usage
+	puts @opts
+	exit 1
+end
+
+### logger
+#log_dt_format = "%Y-%m-%d %H:%M:%S"
+#@log = Logger.new('parse.log')
+#@log.datetime_format = log_dt_format
+#@log.level = Logger::INFO
+
+### options
+options = OpenStruct.new
+@opts = OptionParser.new
+@opts.banner = "Usage: #{File.basename($0)} [options]"
+@opts.on('-s', "--start-date DATE", String, 
+				'Require: Specify date in format in "yyyy-mm-dd"') do |date|
+	options.start_date = date if date =~ /\d{4}\-\d{2}\-\d{2}/
+end
+@opts.on('-e', "--end-date DATE", String, 
+				'Require: Specify date in format in "yyyy-mm-dd"') do |date|
+	options.end_date = date if date =~ /\d{4}\-\d{2}\-\d{2}/
+end
+@opts.on_tail("-h", "--help", "Show this message") do
+	puts @opts
+end
+@opts.parse! rescue usage
+
 ### main
+
+#start_date = Date.new(2007,9,1)
+#end_date = Date.new(2007,9,5)
+
+sd_str = options.start_date
+ed_str = options.end_date
+usage if sd_str.nil?
+usage if ed_str.nil?
+
+sd = Date.strptime(sd_str, '%Y-%m-%d')
+ed = Date.strptime(ed_str, '%Y-%m-%d')
+
+pp sd
+pp ed
+#exit 0
+
+@output = sd.strftime("%Y%m%d") + '_' + ed.strftime("%Y%m%d") + '.txt'
+
+# backup the previous output file if it exists
+FileUtils.mv(@output, @output.sub('.txt','_txt.bak')) if File.exist?(@output)
 
 http,cookie = login
 
-start_date = Date.new(2007,9,1)
-end_date = Date.new(2007,9,5)
+(sd..ed).to_a.each do |d|
+	# tag is used by the download script
+	# to catagorise the downloaded transcripts
+	# ie. tag => 2007-09 
+	tag = d.strftime("%Y-%m")
 
-sd_str = start_date.strftime("%Y-%m-%d")
-ed_str = end_date.strftime("%Y-%m-%d")
-
-out("* Earning transcripts (#{sd_str} - #{ed_str})")
-
-(start_date..end_date).to_a.each do |d|
-	d_str = d.strftime("%Y-%m-%d")
-	out("* #{d_str}")
+	d_str = d.strftime("%Y-%m-%d") 
+	puts "Fetching URL ... " + d_str
+	out("# " + d_str) 
 
 	params = {
 		:start_date => d,
@@ -284,10 +292,10 @@ out("* Earning transcripts (#{sd_str} - #{ed_str})")
 		(1..nop).to_a.each do |page|
 			params[:page] = page
 			resp = transcripts(cookie,params)
-			fetch_download_links(resp)
+			fetch_links(resp, tag)
 		end
 	else
 		resp = transcripts(cookie,params)
-		fetch_download_links(resp)
+		fetch_links(resp, tag)
 	end
 end
