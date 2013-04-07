@@ -101,6 +101,7 @@ def login
 	pp cookie
 
 	#show_body(resp)
+	puts "* Logged in as #{USERNAME}"
 	return http,cookie
 end
 
@@ -248,37 +249,39 @@ end
 
 ### main
 
-#start_date = Date.new(2007,9,1)
-#end_date = Date.new(2007,9,5)
-
 sd_str = options.start_date
 ed_str = options.end_date
 usage if sd_str.nil?
 usage if ed_str.nil?
 
+#sd = Date.new(2007,9,1)
+#ed = Date.new(2007,9,5)
 sd = Date.strptime(sd_str, '%Y-%m-%d')
 ed = Date.strptime(ed_str, '%Y-%m-%d')
 
-pp sd
-pp ed
+#pp sd
+#pp ed
 #exit 0
 
-@output = sd.strftime("%Y%m%d") + '_' + ed.strftime("%Y%m%d") + '.txt'
+@output = sd.strftime('%Y%m%d') + '_' + ed.strftime('%Y%m%d') + '.txt'
 
 # backup the previous output file if it exists
-FileUtils.mv(@output, @output.sub('.txt','_txt.bak')) if File.exist?(@output)
+FileUtils.mv(@output, @output.sub(/\.txt$/,'_bak.txt')) if File.exist?(@output)
 
+# login
 http,cookie = login
+
+puts "* fetching transcript download links (#{sd_str} -> #{ed_str})"
 
 (sd..ed).to_a.each do |d|
 	# tag is used by the download script
 	# to catagorise the downloaded transcripts
 	# ie. tag => 2007-09 
-	tag = d.strftime("%Y-%m")
+	tag = d.strftime('%Y-%m')
 
-	d_str = d.strftime("%Y-%m-%d") 
-	puts "Fetching URL ... " + d_str
-	out("# " + d_str) 
+	d_str = d.strftime('%Y-%m-%d') 
+	puts ' ... ' + d_str + ' ... '
+	out('# ' + d_str) 
 
 	params = {
 		:start_date => d,
