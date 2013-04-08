@@ -235,15 +235,16 @@ options = OpenStruct.new
 @opts = OptionParser.new
 @opts.banner = "Usage: #{File.basename($0)} [options]"
 @opts.on('-s', "--start-date DATE", String, 
-        'Require: Specify date in format in "yyyy-mm-dd"') do |date|
+        'Require: specify date in format in "yyyy-mm-dd"') do |date|
   options.start_date = date if date =~ /\d{4}\-\d{2}\-\d{2}/
 end
 @opts.on('-e', "--end-date DATE", String, 
-        'Require: Specify date in format in "yyyy-mm-dd"') do |date|
+        'Require: specify date in format in "yyyy-mm-dd"') do |date|
   options.end_date = date if date =~ /\d{4}\-\d{2}\-\d{2}/
 end
 @opts.on_tail("-h", "--help", "Show this message") do
   puts @opts
+  exit
 end
 @opts.parse! rescue usage
 
@@ -285,7 +286,7 @@ puts "* fetching transcript download links (#{sd_str} -> #{ed_str})"
 
   params = {
     :start_date => d,
-    :end_date => d.next,
+    :end_date => d,
     :country_code => 'US'
   }
   resp = transcripts(cookie,params)
