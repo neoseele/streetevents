@@ -18,5 +18,5 @@ for l in `grep -v "^#" $1`; do
   [ -d "$dir" ] || mkdir $dir
 
   # download
-  wget -P $dir -nc --content-disposition $url
+  wget -P $dir -nc --content-disposition -t 3 $url
 done
