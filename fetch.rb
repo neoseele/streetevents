@@ -1,3 +1,4 @@
+#!/usr/bin/env ruby
 # encoding: UTF-8
 
 require 'net/http'
@@ -10,7 +11,7 @@ require 'ostruct'
 require 'logger'
 require 'nokogiri'
 require 'fileutils'
-require 'Date'
+require 'date'
 
 ### constants
 
