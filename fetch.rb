@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 # encoding: UTF-8
 
+require 'rubygems'
 require 'net/http'
 require 'net/https'
 require 'uri'
