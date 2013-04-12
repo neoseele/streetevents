@@ -5,7 +5,7 @@ function usage() {
   exit 1
 }
 
-[ -z "$1" ] && usage
+[ -f "$1" ] || usage
 
 for l in `grep -v "^#" $1`; do
   # 2007-09|http://xxxx
