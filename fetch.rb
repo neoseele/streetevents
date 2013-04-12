@@ -201,7 +201,12 @@ def fetch_links(resp, tag)
       #puts line
       line.scan(/javascript:DownloadDocument\(&#39;\S+&#39;\)/).each do |s|
         link = /javascript:DownloadDocument\(&#39;(.*)&#39;\)/.match(s)[1]
-        out(tag + '|' + link.gsub('amp;',''))
+        line = tag + '|' + link.gsub('amp;','')
+        if @dl
+          fetch(line)
+        else
+          out(line)
+        end
       end
     end
   end
@@ -220,6 +225,12 @@ def out(line)
   end
 end
 
+def fetch(line)
+  dir,url = line.split('|')
+  FileUtils.mkdir dir unless File.directory? dir
+  `wget -P #{dir} -nc --content-disposition -t 3 "#{url}"`
+end
+
 def usage
   puts @opts
   exit 1
@@ -236,12 +247,15 @@ options = OpenStruct.new
 @opts = OptionParser.new
 @opts.banner = "Usage: #{File.basename($0)} [options]"
 @opts.on('-s', "--start-date DATE", String, 
-        'Require: specify date in format in "yyyy-mm-dd"') do |date|
-  options.start_date = date if date =~ /\d{4}\-\d{2}\-\d{2}/
+        'Require: specify date in format in "yyyy-mm-dd"') do |s|
+  options.start_date = s if s =~ /\d{4}\-\d{2}\-\d{2}/
 end
 @opts.on('-e', "--end-date DATE", String, 
-        'Require: specify date in format in "yyyy-mm-dd"') do |date|
-  options.end_date = date if date =~ /\d{4}\-\d{2}\-\d{2}/
+        'Require: specify date in format in "yyyy-mm-dd"') do |e|
+  options.end_date = e if e =~ /\d{4}\-\d{2}\-\d{2}/
+end
+@opts.on('-d', "--download", 'Download files immediately') do |d|
+  options.download = d
 end
 @opts.on_tail("-h", "--help", "Show this message") do
   puts @opts
@@ -256,6 +270,9 @@ ed_str = options.end_date
 usage if sd_str.nil?
 usage if ed_str.nil?
 
+# download the files immediately?
+@dl = options.download
+
 #sd = Date.new(2007,9,1)
 #ed = Date.new(2007,9,5)
 sd = Date.strptime(sd_str, '%Y-%m-%d')
@@ -268,7 +285,7 @@ ed = Date.strptime(ed_str, '%Y-%m-%d')
 @output = sd.strftime('%Y%m%d') + '_' + ed.strftime('%Y%m%d') + '.txt'
 
 # backup the previous output file if it exists
-FileUtils.mv(@output, @output.sub(/\.txt$/,'_bak.txt')) if File.exist?(@output)
+FileUtils.mv(@output, @output.sub(/\.txt$/,'_bak.txt')) if @dl.nil? and File.exist?(@output)
 
 # login
 http,cookie = login
