@@ -43,3 +43,8 @@ Thumbs.db
 *.docx
 *.csv
 *.xls
+
+# Extras
+######################
+*.txt
+*.yaml
