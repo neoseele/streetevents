@@ -13,14 +13,29 @@ require 'logger'
 require 'nokogiri'
 require 'fileutils'
 require 'date'
+require 'yaml'
 
 ### constants
 
-USERNAME = 'vragunathan'
-PASSWORD = 'uniqueens'
+CONFIG = 'config.yaml'
 USERAGENT = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.0.1) Gecko/20060111 Firefox/1.5.0.1'
 
 ### functions
+
+# Load in the YAML configuration file, check for errors, and return as hash 'cfg'
+def load_config
+  cfg = File.open(CONFIG)  { |yf| YAML::load( yf ) } if File.exists?(CONFIG)
+  # => Ensure loaded data is a hash. ie: YAML load was OK
+  if cfg.class != Hash
+     raise "ERROR: Configuration - invalid format or parsing error."
+  else
+    if cfg['login'].nil?
+      raise "ERROR: Configuration: login not defined."
+    end
+  end
+
+  return cfg
+end
 
 def view_response(resp)
   if @options[:debug]
@@ -85,8 +100,8 @@ def login
 
   data = "__VIEWSTATE=#{ERB::Util.url_encode(viewstate)}&" +
     "Destinations=&" +
-    "uname=#{USERNAME}&" +
-    "pwd=#{PASSWORD}&" +
+    "uname=#{@username}&" +
+    "pwd=#{@password}&" +
     "post=true"
 
   headers = {
@@ -103,7 +118,7 @@ def login
   pp cookie
 
   #show_body(resp)
-  puts "* Logged in as #{USERNAME}"
+  puts "* Logged in as #{@username}"
   return http,cookie
 end
 
@@ -271,19 +286,19 @@ ed_str = options.end_date
 usage if sd_str.nil?
 usage if ed_str.nil?
 
-# download the files immediately?
-@dl = options.download
-
 #sd = Date.new(2007,9,1)
 #ed = Date.new(2007,9,5)
 sd = Date.strptime(sd_str, '%Y-%m-%d')
 ed = Date.strptime(ed_str, '%Y-%m-%d')
-
-#pp sd
-#pp ed
-#exit 0
-
 @output = sd.strftime('%Y%m%d') + '_' + ed.strftime('%Y%m%d') + '.txt'
+
+# download the files immediately?
+@dl = options.download
+
+# load config
+cfg = load_config
+@username = cfg['login']['username']
+@password = cfg['login']['password']
 
 # backup the previous output file if it exists
 FileUtils.mv(@output, @output.sub(/\.txt$/,'_bak.txt')) if @dl.nil? and File.exist?(@output)
