@@ -23,6 +23,14 @@ USERAGENT = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.0.1) Gecko/2
 ### functions
 
 # Load in the YAML configuration file, check for errors, and return as hash 'cfg'
+#
+# Ex config.yaml:
+#
+# ---
+# login:
+#   username: xxx
+#   password: xxx
+#
 def load_config
   cfg = File.open(CONFIG)  { |yf| YAML::load( yf ) } if File.exists?(CONFIG)
   # => Ensure loaded data is a hash. ie: YAML load was OK
