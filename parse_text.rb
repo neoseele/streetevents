@@ -5,7 +5,8 @@ require 'pp'
 require 'find'
 require 'csv'
 require 'logger'
-require 'tactful_tokenizer'
+#require 'tactful_tokenizer'
+require 'stanford-core-nlp'
 
 ### classes
 
@@ -14,7 +15,7 @@ class Participant
 
   def initialize(name_str, affil_str, type)
     @first_name, @last_name = name_str.split(' ', 2)
-    @firm, @title = affil_str.split(' - ', 2) unless affil_str.nil?
+    @affil, @title = affil_str.split(' - ', 2) unless affil_str.nil?
     @type = type
   end
 
@@ -22,25 +23,25 @@ class Participant
   def to_s
     str = @first_name
     str += ' ' + @last_name unless @last_name.nil?
-    str += ', ' + @firm unless @firm.nil?
+    str += ', ' + @affil unless @affil.nil?
     str += ' - ' + @title unless @title.nil?
     return str
   end
 end
 
 class Qna
-  attr_accessor :index, :participant, :sentences
+  attr_accessor :participant, :transcript, :sentences
 
   def initialize
-    @sentences = []
+    @transcript = ''
   end
 
   def questions
     qw_regex = "(what|where|when|which|who|whom|would|do|does|doesn't|is|isn't|can|could|to what exten|should|was|has|how|which|if)\W+"
     questions = []
-    @sentences.each do |s|
+    sentences.each do |s|
       if s =~ /\?/
-        questions << s 
+        questions << s
         next
       end
       questions << s if s.downcase =~ /^#{qw_regex}/
@@ -48,9 +49,10 @@ class Qna
     questions
   end
 
-  def num_of_words(sentences=@sentences)
+  def num_of_words(sents=@sentences)
     count = 0
-    sentences.each do |s|
+    sents = sentences if sents.nil?
+    sents.each do |s|
       s.split(' ').each do |w|
         count += 1 unless w =~ /^\W+$/
       end
@@ -65,7 +67,23 @@ class Qna
   def num_of_words_in_questions
     num_of_words(questions)
   end
-  
+
+  def sentences
+    if @sentences.nil?
+      #m = TactfulTokenizer::Model.new
+      #@sentences = m.tokenize_text(@transcript)
+
+      text = StanfordCoreNLP::Annotation.new(@transcript)
+      @@pipeline.annotate(text)
+
+      @sentences = []
+      text.get(:sentences).each do |s|
+        @sentences << s.to_s
+      end
+    end
+    @sentences
+  end
+
 end
 
 ### functions
@@ -113,29 +131,26 @@ def count_word_frequence(sentences, word_freq={})
   word_freq
 end
 
-CP = 'Corporate Participants'
-CCP = 'Conference Call Participants'
-QNA = 'Questions and Answers'
 
 def parse_p(entry,type)
-  data = []
+  participants = []
+
   h = Hash[entry.map.with_index.to_a]
   names = entry.select {|l| l =~ /^\*/}
 
   names.each do |n|
     name = n[1..-1].strip
     affil = entry[h[n]+1]
-    p_str = name
-    p_str += ", #{affil}" unless affil =~ /^\*/
-    data << p_str
+    participants << Participant.new(name, affil, type)
   end
-  data
+  participants
 end
 
 def parse(file)
   txt = ''
   File.open(file, 'r').each do |line|
     l = line.strip
+    l.gsub!(/\s+/, ' ')
     l.gsub!(/^=+$/, '===')
     l.gsub!(/^-+$/, '---')
     txt += "|#{l}" unless l == ''
@@ -145,174 +160,85 @@ def parse(file)
 
   sections.collect! {|l| l[1..-2]} # remove the leading and trailing '|'
   header = sections.shift.split('|')
-  pp header
+  #pp header
 
-  h = Hash[sections.map.with_index.to_a]
-
-  cp = sections[h[CP]+1].split('|') if h.has_key?(CP)
-  ccp = sections[h[CCP]+1].split('|') if h.has_key?(CCP)
-
-  cp_arr = parse_p(cp, 'C')
-  ccp_arr = parse_p(ccp, 'A')
-  pp cp_arr
-  pp ccp_arr
-
-  sections.select! {|l| l =~ /^#{QNA}/}
-
-  data = sections.shift.split'|---|'
-  qna = []
-  data.each do |l|
-    break if l == 'Definitions'
-    break if l == 'Disclaimer'
-    if l.chars.include?('|')
-      qna += l.split('|')
-    else
-      qna << l
-    end
-  end
-  #pp qna
-end
-
-def parse_old(file)
-  ## read content from word
-  pgs = []
-  sents = []
-
-  doc = @word.documents.open(file, 'ReadOnly' => true)
-  doc.paragraphs.each do |p|
-    pg = p.range.text.scan(/[[:print:]]/).join.strip
-    pgs << pg unless pg == ''
-    break if pg == "PRESENTATION" or pg == "TRANSCRIPT" or pg == "QUESTION AND ANSWER"
-  end
-  doc.sentences.each do |s|
-    sent = s.text.scan(/[[:print:]]/).join.strip
-    sents << sent unless sent == ''
-  end
-  @word.activedocument.close
-
-  ## find ticker
-  reason = pgs[2]
-  ticker = reason.split(' - ')[0]
-  dt_string = pgs[3][/Event Date\/Time: (.*)/,1]
-  datetime = DateTime.parse(dt_string)
+  ticker = header[2].split('-')[0].strip
+  reason = header[3]
+  datetime = DateTime.parse(header[4])
   date_str = datetime.nil? ? 'unknown' : datetime.strftime('%Y-%m-%d')
   time_str = datetime.nil? ? 'unknown' : datetime.strftime('%H:%M')
 
-  debug "------------------"
-  debug "Reason: " + reason
-  debug "Ticker: " + ticker
-  debug "DateTime: " + datetime.strftime('%Y%m%d')
-  debug "------------------"
-
-  ## find participants
-  cps = []
-  ccps = []
-  
-  p_flag = nil
-  pgs.each do |pg|
-    if pg == "CORPORATE PARTICIPANTS"
-      p_flag = 'cp'
-      next
-    end
-
-    if pg == "CONFERENCE CALL PARTICIPANTS"
-      p_flag = 'ccp'
-      next
-    end
-
-    break if pg == "PRESENTATION" or pg == "TRANSCRIPT" or pg == "QUESTION AND ANSWER"
-
-    cps << pg.gsub(/ \(\w*\)/, '') if p_flag == 'cp'
-    ccps << pg.gsub(/ \(\w*\)/, '') if p_flag == 'ccp'
-  end
-
-  pps = {}
-  unless cps.length == 0
-    (0..cps.length - 1).step(2).each do |i|
-      pp = Participant.new(cps[i], cps[i+1], 'C')
-      pps[pp.to_s] = pp
+  # parse participants
+  ops = {}
+  h = Hash[sections.map.with_index.to_a]
+  if h.has_key?(CP)
+    cp = sections[h[CP]+1].split('|')
+    parse_p(cp, 'C').each do |p|
+      ops[p.to_s] = p
     end
   end
-  unless ccps.length == 0
-    (0..ccps.length - 1).step(2).each do |i|
-      pp = Participant.new(ccps[i], ccps[i+1], 'A')
-      pps[pp.to_s] = pp
+  if h.has_key?(CCP)
+    ccp = sections[h[CCP]+1].split('|')
+    parse_p(ccp, 'A').each do |p|
+      ops[p.to_s] = p
     end
   end
-  pps['Operator'] = 'Operator'
+  ops['Operator'] = 'Operator'
+  #pp ops
 
-  ## find Q&A
-  qna_found = sents.join('|').squeeze(' ').match(/QUESTION AND ANSWER\|(.*DISCLAIMER)/)
-  debug qna_found
-
-  ## do not proceed if no Q&A is found
-  if qna_found.nil?
-    msg = File.basename(file) + " skipped: [Question and Answer] section is missing"
-    err msg
-    return
-  end
-
-  ## senatize Q&A
-  #
-  # say we have a participant named: Thomas A. Moore
-  # ms word stupidly think "Thomas A." is a sentence, since it have a dot in it
-  # as such, after the previous "sents.join('|')" call, "Thomas A. Moore" will turn into
-  # "Thomas A.|Moore" in string "qna_str"
-  # 
-  qna_str = qna_found[1]
-  pps.each_key do |k|
-    if k =~ /\. /
-      sub = k.gsub('. ','.|')
-      qna_str.gsub!(sub, k)
-    end
-  end
-  qna_contents = qna_str.split('|') 
-  
-  search_strings = pps.keys
+  # parse questions and answers
+  search_strings = ops.keys
   current_qna = nil
   qnas = []
 
-  qna_contents.each_with_index do |value, index|
-    if value == 'DISCLAIMER'
+  sections.select! {|l| l =~ /^#{QNA}/}
+  qna_entries = sections.shift.split'|---|'
+  qna_entries.each do |l|
+    if l == 'Definitions' or l == 'Disclaimer'
       qnas << current_qna.clone unless current_qna.nil?
       break
     end
-    # found a match
-    # save the current qna object to qnas if it exist
-    # create a new qna object
-    if search_strings.include? value
+
+    # "Fred Ziegel,  Topeka Capital Markets - Analyst   [31]"
+    l.gsub!(/\s+\[\d+\]$/, '')
+
+    if search_strings.include?(l)
       qnas << current_qna.clone unless current_qna.nil?
       current_qna = Qna.new
-      current_qna.index = index
-      current_qna.participant = pps[value]
+      current_qna.participant = ops[l]
     else
-      current_qna.sentences << value unless current_qna.nil?
+      current_qna.transcript += l.gsub('|', ' ') unless current_qna.nil?
     end
-  end
-
-  qnas.each do |qna|
-    next if qna.participant == 'Operator'
-    debug '------------------------'
-    debug qna.participant.to_s
-    debug '# of words: ' + qna.num_of_words.to_s
-    debug '# of questions: ' + qna.num_of_questions.to_s
-    debug '# of words in questions: ' + qna.num_of_words_in_questions.to_s
-    debug '------------------------'
   end
 
   ## build the csv array
   qnas.each do |qna|
     next if qna.participant == 'Operator'
     p = qna.participant
-    @csv << [ticker,date_str,time_str,reason,p.type,p.first_name,p.last_name,p.to_s,p.firm,p.title,qna.num_of_words,qna.num_of_questions,qna.num_of_words_in_questions]
+    @csv << [
+      ticker,date_str,time_str,reason,
+      p.type,p.first_name,p.last_name,p.to_s,p.affil,p.title,
+      qna.num_of_words,qna.num_of_questions,qna.num_of_words_in_questions
+    ]
   end
+
 end
 
 ### main
 
 usage unless ARGV.length == 1 and File.directory?(ARGV[0])
 
+StanfordCoreNLP.jar_path = '/opt/stanford-core-nlp-minimal/'
+StanfordCoreNLP.model_path = '/opt/stanford-core-nlp-minimal/'
+StanfordCoreNLP.set_model('pos.model', 'english-left3words-distsim.tagger')
+StanfordCoreNLP.use :english
+@@pipeline =  StanfordCoreNLP.load(:tokenize, :ssplit)
+
 DEBUG = false
+
+CP = 'Corporate Participants'
+CCP = 'Conference Call Participants'
+QNA = 'Questions and Answers'
 
 log_dt_format = "%Y-%m-%d %H:%M:%S"
 @log = Logger.new('parse.log')
@@ -323,7 +249,9 @@ log_dt_format = "%Y-%m-%d %H:%M:%S"
 @stdout.datetime_format = log_dt_format
 @stdout.level = Logger::DEBUG
 
-@csv = [['ticker','date','time','reason','ca','first_nm','surname','affln','firm','jobt','no_words','no_questions','no_words_having_questions']]
+@csv = [['ticker','date','time','reason','ca',
+  'first_nm','surname','affln','firm','jobt',
+  'no_words','no_questions','no_words_having_questions']]
 
 input = ARGV[0]
 output_dir = File.dirname(input)
@@ -344,4 +272,4 @@ Find.find(input) do |path|
 end
 
 ## write to csv
-#write_to_csv(@csv, output)
+write_to_csv(@csv, output)
