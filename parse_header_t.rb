@@ -53,13 +53,17 @@ def parse(file)
 
   ticker = header[2].split('-')[0].strip
   reason = header[3]
-  datetime = DateTime.parse(header[4])
-  date_str = datetime.nil? ? 'unknown' : datetime.strftime('%Y-%m-%d')
-  time_str = datetime.nil? ? 'unknown' : datetime.strftime('%H:%M')
+  datetime_str = header[4]
 
+  datetime = DateTime.parse(datetime_str)
+  date_str = datetime.strftime('%Y-%m-%d')
+  time_str = datetime.strftime('%H:%M')
+
+  timezone_str = datetime_str[/\W[A-Z]{2,}$/]
+  timezone_str = timezone_str.strip unless timezone_str.nil?
 
   ## build the csv array
-  @csv << [ticker,date_str,time_str,reason]
+  @csv << [ticker,date_str,time_str,timezone_str,reason]
 end
 
 ### main
@@ -77,7 +81,7 @@ log_dt_format = "%Y-%m-%d %H:%M:%S"
 @stdout.datetime_format = log_dt_format
 @stdout.level = Logger::DEBUG
 
-@csv = [['ticker','date','time','reason']]
+@csv = [['ticker','date','time','timezone','reason']]
 
 input = ARGV[0]
 output_dir = File.dirname(input)
