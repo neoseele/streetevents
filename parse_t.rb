@@ -192,6 +192,13 @@ def parse(file)
   qnas = []
 
   sections.select! {|l| l =~ /^#{QNA}/}
+
+  ## do not proceed if no Q&A is found
+  if sections.empty?
+    err "#{File.basename(file)} skipped: [Question and Answer] section is missing"
+    return
+  end
+
   qna_entries = sections.shift.split'|---|'
   qna_entries.each do |l|
     if l == 'Definitions' or l == 'Disclaimer'
