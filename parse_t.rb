@@ -262,7 +262,7 @@ Find.find(input) do |path|
   if File.directory? (path)
     next
   else
-    if File.extname(path) == '.txt' and File.basename(path) =~ /^\w/
+    if File.extname(path) == '.txt' and not File.basename(path) =~ /^\./
       msg = "Parsing [" + path + "]"
       @log.info msg
       @stdout.info msg
