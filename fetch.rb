@@ -252,7 +252,8 @@ end
 def fetch(line)
   dir,url = line.split('|')
   FileUtils.mkdir dir unless File.directory? dir
-  `wget -P #{dir} -nc --content-disposition -t 3 "#{url}"`
+  # fetch text format only
+  `wget -P #{dir} -nc --content-disposition -t 3 "#{url}"` if url =~ /format=Text$/
 end
 
 def usage
