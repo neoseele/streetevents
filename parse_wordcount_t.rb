@@ -5,7 +5,6 @@ require 'pp'
 require 'find'
 require 'csv'
 require 'logger'
-#require 'tactful_tokenizer'
 require 'stanford-core-nlp'
 
 ### classes
@@ -176,15 +175,11 @@ def parse(file)
   h = Hash[sections.map.with_index.to_a]
   if h.has_key?(CP)
     cp = sections[h[CP]+1].split('|')
-    parse_p(cp, 'C').each do |p|
-      ops[p.to_s] = p
-    end
+    parse_p(cp, 'C').each {|p| ops[p.to_s] = p}
   end
   if h.has_key?(CCP)
     ccp = sections[h[CCP]+1].split('|')
-    parse_p(ccp, 'A').each do |p|
-      ops[p.to_s] = p
-    end
+    parse_p(ccp, 'A').each {|p| ops[p.to_s] = p}
   end
   ops['Operator'] = 'Operator'
   #pp ops
