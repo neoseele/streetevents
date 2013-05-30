@@ -137,7 +137,9 @@ def parse_p(entry,type)
 
   names.each do |n|
     name = n[1..-1].strip
+    next if name.empty?
     affil = entry[h[n]+1]
+    next if affil =~ /^\*/
     participants << Participant.new(name, affil, type)
   end
   participants
