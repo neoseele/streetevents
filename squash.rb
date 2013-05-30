@@ -45,7 +45,7 @@ end
 
 class Qa
   attr_accessor :q, :a, :order
-  
+
   def initialize(q, order=1, a={})
     @q = q
     @a = a
@@ -68,7 +68,7 @@ def write_to_csv(content, path)
   end
 end
 
-usage unless ARGV.length == 1 and File.extname(ARGV[0]) == ".csv"
+usage unless ARGV.length == 1 and File.exist?(ARGV[0]) and File.extname(ARGV[0]) == ".csv"
 
 input = ARGV[0]
 output_dir = File.dirname(input)
@@ -83,7 +83,7 @@ order = 1
 
 rows.each do |r|
   e = Entry.new(r)
-  
+
   # save the first entry into last_qa
   if last_qa.nil?
     if e.ca == 'A'
@@ -104,7 +104,7 @@ rows.each do |r|
     end
 
     # from this point, either ticker or full_name changed
-    
+
     # ticker is the same ? increase order : reset order
     (e.ticker == last_q.ticker) ? order += 1 : order = 1
 
