@@ -246,7 +246,7 @@ def parse(file)
   word_freq = Hash[@words.collect {|w| [w,0]}]
   qnas.each do |qna|
     p = qna.participant
-    next unless p.respond_to? :type and p.type = 'A'
+    next unless p.respond_to? :type and p.type == 'A'
     qna.cal_word_freq(word_freq)
   end
 
