@@ -105,7 +105,7 @@ def err(msg)
   @stdout.error msg
 end
 
-def write_to_csv(content, path)
+def csv_out(content, path)
   CSV.open(path, 'wb') do |csv|
     content.each do |arr|
       csv << arr
@@ -292,4 +292,4 @@ Find.find(input) do |path|
 end
 
 ## write to csv
-write_to_csv(@csv, output)
+csv_out(@csv, output)

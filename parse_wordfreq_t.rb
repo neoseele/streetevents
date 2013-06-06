@@ -5,7 +5,6 @@ require 'pp'
 require 'find'
 require 'csv'
 require 'logger'
-#require 'tactful_tokenizer'
 require 'stanford-core-nlp'
 
 ### classes
@@ -29,7 +28,7 @@ class Participant
   end
 end
 
-class Qna
+class Transcript
   attr_accessor :participant, :transcript, :sentences
 
   def initialize
@@ -70,9 +69,6 @@ class Qna
 
   def sentences
     if @sentences.nil?
-      #m = TactfulTokenizer::Model.new
-      #@sentences = m.tokenize_text(@transcript)
-
       text = StanfordCoreNLP::Annotation.new(@transcript)
       @@pipeline.annotate(text)
 
@@ -84,6 +80,14 @@ class Qna
     @sentences
   end
 
+  def cal_word_freq(word_freq)
+    #puts @transcript
+    word_freq.keys.each do |w|
+      freq = @transcript.downcase.scan(/\b#{w}\b/).count
+      #puts w + ': ' + freq.to_s
+      word_freq[w] += freq
+    end
+  end
 end
 
 ### functions
@@ -131,7 +135,6 @@ def count_word_frequence(sentences, word_freq={})
   word_freq
 end
 
-
 def parse_p(entry,type)
   participants = []
 
@@ -166,70 +169,89 @@ def parse(file)
 
   ticker = header[2].split('-')[0].strip
   reason = header[3]
-  datetime = DateTime.parse(header[4])
-  date_str = datetime.nil? ? 'unknown' : datetime.strftime('%Y-%m-%d')
-  time_str = datetime.nil? ? 'unknown' : datetime.strftime('%H:%M')
+  datetime_str = header[4]
+
+  datetime = DateTime.parse(datetime_str)
+  date_str = datetime.strftime('%Y-%m-%d')
+  time_str = datetime.strftime('%H:%M')
+
+  timezone_str = datetime_str[/\W[A-Z]{2,}$/]
+  timezone_str = timezone_str.strip unless timezone_str.nil?
 
   # parse participants
   ops = {}
   h = Hash[sections.map.with_index.to_a]
   if h.has_key?(CP)
     cp = sections[h[CP]+1].split('|')
-    parse_p(cp, 'C').each do |p|
-      ops[p.to_s] = p
-    end
+    parse_p(cp, 'C').each {|p| ops[p.to_s] = p}
   end
   if h.has_key?(CCP)
     ccp = sections[h[CCP]+1].split('|')
-    parse_p(ccp, 'A').each do |p|
-      ops[p.to_s] = p
-    end
+    parse_p(ccp, 'A').each {|p| ops[p.to_s] = p}
   end
   ops['Operator'] = 'Operator'
   #pp ops
 
-  # parse questions and answers
   search_strings = ops.keys
-  current_qna = nil
+
+  # parse presentations
+=begin
+  ps = []
+  p_sections = sections.select {|l| l =~ /^#{PRESENTATION}/}
+  if ! p_sections.empty?
+    current_p = nil
+    p_entries = p_sections.shift.split'|---|'
+    p_entries.each do |l|
+      if [QNA,'Definitions','Disclaimer'].include? l
+        ps << current_p.clone unless current_p.nil?
+        break
+      end
+      l.gsub!(/\s+\[\d+\]$/, '')
+      if search_strings.include?(l)
+        ps << current_p.clone unless current_p.nil?
+        current_p = Transcript.new
+        current_p.participant = ops[l]
+      else
+        current_p.transcript += l.gsub('|', ' ') unless current_p.nil?
+      end
+    end
+  end
+=end
+
+  # parse questions and answers
   qnas = []
-
-  sections.select! {|l| l =~ /^#{QNA}/}
-
-  ## do not proceed if no Q&A is found
-  if sections.empty?
-    err "#{File.basename(file)} skipped: [Question and Answer] section is missing"
-    return
+  qna_sections = sections.select {|l| l =~ /^#{QNA}/}
+  if ! qna_sections.empty?
+    current_qna = nil
+    qna_entries = qna_sections.shift.split'|---|'
+    qna_entries.each do |l|
+      if ['Definitions','Disclaimer'].include? l
+        qnas << current_qna.clone unless current_qna.nil?
+        break
+      end
+      # "Fred Ziegel,  Topeka Capital Markets - Analyst   [31]"
+      l.gsub!(/\s+\[\d+\]$/, '')
+      if search_strings.include?(l)
+        qnas << current_qna.clone unless current_qna.nil?
+        current_qna = Transcript.new
+        current_qna.participant = ops[l]
+      else
+        current_qna.transcript += l.gsub('|', ' ') unless current_qna.nil?
+      end
+    end
   end
 
-  qna_entries = sections.shift.split'|---|'
-  qna_entries.each do |l|
-    if l == 'Definitions' or l == 'Disclaimer'
-      qnas << current_qna.clone unless current_qna.nil?
-      break
-    end
+  return if qnas.empty?
 
-    # "Fred Ziegel,  Topeka Capital Markets - Analyst   [31]"
-    l.gsub!(/\s+\[\d+\]$/, '')
-
-    if search_strings.include?(l)
-      qnas << current_qna.clone unless current_qna.nil?
-      current_qna = Qna.new
-      current_qna.participant = ops[l]
-    else
-      current_qna.transcript += l.gsub('|', ' ') unless current_qna.nil?
-    end
+  word_freq = Hash[@words.collect {|w| [w,0]}]
+  qnas.each do |qna|
+    p = qna.participant
+    next unless p.respond_to? :type and p.type = 'A'
+    qna.cal_word_freq(word_freq)
   end
 
   ## build the csv array
-  qnas.each do |qna|
-    next if qna.participant == 'Operator'
-    p = qna.participant
-    @csv << [
-      ticker,date_str,time_str,reason,
-      p.type,p.first_name,p.last_name,p.to_s,p.affil,p.title,
-      qna.num_of_words,qna.num_of_questions,qna.num_of_words_in_questions
-    ]
-  end
+  @csv << [ticker,date_str,time_str,timezone_str] + word_freq.values
 
 end
 
@@ -248,6 +270,7 @@ DEBUG = false
 CP = 'Corporate Participants'
 CCP = 'Conference Call Participants'
 QNA = 'Questions and Answers'
+PRESENTATION = 'Presentation'
 
 log_dt_format = "%Y-%m-%d %H:%M:%S"
 @log = Logger.new('parse.log')
@@ -258,9 +281,16 @@ log_dt_format = "%Y-%m-%d %H:%M:%S"
 @stdout.datetime_format = log_dt_format
 @stdout.level = Logger::DEBUG
 
-@csv = [['ticker','date','time','reason','ca',
-  'first_nm','surname','affln','firm','jobt',
-  'no_words','no_questions','no_words_having_questions']]
+@words = [
+  'cash',
+  'cash constrained',
+  'financially constrained',
+  'compensation',
+  'ceo compensation',
+  'executive compensation',
+]
+
+@csv = [['ticker','date','time','timezone'] + @words]
 
 input = ARGV[0]
 output_dir = File.dirname(input)

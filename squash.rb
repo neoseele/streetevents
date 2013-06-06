@@ -60,7 +60,7 @@ def usage
   exit 1
 end
 
-def write_to_csv(content, path)
+def csv_out(content, path)
   CSV.open(path, 'wb') do |csv|
     content.each do |arr|
       csv << arr
@@ -142,5 +142,5 @@ end
 
 ## write to csv
 puts "* writing results to #{output}"
-write_to_csv(@csv, output)
+csv_out(@csv, output)
 
