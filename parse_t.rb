@@ -131,7 +131,6 @@ def count_word_frequence(sentences, word_freq={})
   word_freq
 end
 
-
 def parse_p(entry,type)
   participants = []
 

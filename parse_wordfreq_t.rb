@@ -119,22 +119,6 @@ def csv_out(content, path)
   end
 end
 
-def count_word_frequence(sentences, word_freq={})
-  sentences.each do |s|
-    s.split(' ').each do |w|
-      cw = w.downcase.gsub(/\W/, '')
-      next unless cw != ''
-
-      if word_freq[cw].nil?
-        word_freq[cw] = 1
-      else
-        word_freq[cw] += 1
-      end 
-    end
-  end
-  word_freq
-end
-
 def parse_p(entry,type)
   participants = []
 
