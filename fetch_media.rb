@@ -11,14 +11,22 @@ require 'optparse'
 require 'ostruct'
 require 'logger'
 require 'nokogiri'
-require 'fileutils'
 require 'date'
 require 'yaml'
+require 'csv'
 
 ### constants
 
 CONFIG = 'config.yaml'
 USERAGENT = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.0.1) Gecko/20060111 Firefox/1.5.0.1'
+
+### classes
+
+class String
+  def clean_up
+    self.scan(/[[:print:]]/).join.squeeze.strip
+  end
+end
 
 ### functions
 
@@ -162,7 +170,7 @@ def transcripts(cookie, params={})
   resp = http.get2(path, headers)
 
   #show_body(resp)
-  
+
   viewstate = ''
   resp.body.each_line do |line|
     if line =~ /_VIEWSTATE/
@@ -205,7 +213,6 @@ def transcripts(cookie, params={})
   }
   form_enum['gridTranscriptList$ctl00$ddlPages'] = page unless page.nil?
   data = URI.encode_www_form(form_enum)
-  
   #puts data
   #exit 0
 
@@ -219,20 +226,20 @@ def transcripts(cookie, params={})
   resp = http.post(path, data, headers)
 end
 
-def fetch_links(resp, tag)
-  resp.body.each_line do |line|
-    if line =~ /text\.thomsonone\.com/
-      #puts line
-      line.scan(/javascript:DownloadDocument\(&#39;\S+&#39;\)/).each do |s|
-        link = /javascript:DownloadDocument\(&#39;(.*)&#39;\)/.match(s)[1]
-        line = tag + '|' + link.gsub('amp;','')
-        if @dl
-          fetch(line)
-        else
-          out(line)
-        end
-      end
-    end
+def fetch_links(resp)
+  doc = Nokogiri::HTML(resp.body)
+  doc.css('table#gridTranscriptList tbody tr').each do |tr|
+    a = tr.css('td[id$="media"] a')[0]
+    eid = a['href'][/OpenMM\((\d+),/,1].strip
+    expired = a.css('img')[0]['title'] =~ /^This audio archive has expired/
+    next if expired
+
+    ticker = tr.css('td[id$="ticker"]')[0].text.clean_up
+    title = tr.css('td[id$="title"] a')[0].text.clean_up
+    date = tr.css('td[id$="date"]')[0].text.clean_up
+    media = "https://www.streetevents.com/eventcapsule/eventcapsule.aspx?m=p&cid=0&eid=#{eid}&source="
+
+    @csv << [ticker,title,date,media]
   end
 end
 
@@ -243,17 +250,13 @@ def num_of_pages(resp)
   0
 end
 
-def out(line)
-  File.open(@output, 'a') do |f|
-    f.puts line
-  end
-end
 
-def fetch(line)
-  dir,url = line.split('|')
-  FileUtils.mkdir dir unless File.directory? dir
-  # fetch text format only
-  `wget -P #{dir} -nc --content-disposition -t 3 "#{url}"` if url =~ /format=Text$/
+def csv_out(content, path)
+  CSV.open(path, 'wb') do |csv|
+    content.each do |arr|
+      csv << arr
+    end
+  end
 end
 
 def usage
@@ -279,9 +282,9 @@ end
         'Require: specify date in format in "yyyy-mm-dd"') do |e|
   options.end_date = e if e =~ /\d{4}\-\d{2}\-\d{2}/
 end
-@opts.on('-d', "--download", 'Download files immediately') do |d|
-  options.download = d
-end
+#@opts.on('-d', "--download", 'Download files immediately') do |d|
+#  options.download = d
+#end
 @opts.on_tail("-h", "--help", "Show this message") do
   puts @opts
   exit
@@ -299,7 +302,7 @@ usage if ed_str.nil?
 #ed = Date.new(2007,9,5)
 sd = Date.strptime(sd_str, '%Y-%m-%d')
 ed = Date.strptime(ed_str, '%Y-%m-%d')
-@output = sd.strftime('%Y%m%d') + '_' + ed.strftime('%Y%m%d') + '.txt'
+output = sd.strftime('%Y%m%d') + '_' + ed.strftime('%Y%m%d') + '.csv'
 
 # download the files immediately?
 @dl = options.download
@@ -309,23 +312,16 @@ cfg = load_config
 @username = cfg['login']['username']
 @password = cfg['login']['password']
 
-# backup the previous output file if it exists
-FileUtils.mv(@output, @output.sub(/\.txt$/,'_bak.txt')) if @dl.nil? and File.exist?(@output)
-
 # login
 http,cookie = login
 
-puts "* fetching transcript download links (#{sd_str} -> #{ed_str})"
+puts "* fetching transcript media links (#{sd_str} -> #{ed_str})"
+
+@csv = [['ticker','title','date','media']]
 
 (sd..ed).to_a.each do |d|
-  # tag is used by the download script
-  # to catagorise the downloaded transcripts
-  # ie. tag => 2007-09 
-  tag = d.strftime('%Y-%m')
-
   d_str = d.strftime('%Y-%m-%d') 
   puts ' ... ' + d_str + ' ... '
-  out('# ' + d_str) 
 
   params = {
     :start_date => d,
@@ -334,17 +330,19 @@ puts "* fetching transcript download links (#{sd_str} -> #{ed_str})"
   }
   resp = transcripts(cookie,params)
   nop = num_of_pages(resp)
-
   if nop > 0
     (1..nop).to_a.each do |page|
       params[:page] = page
       resp = transcripts(cookie,params)
-      fetch_links(resp, tag)
+      fetch_links(resp)
     end
   else
     resp = transcripts(cookie,params)
-    fetch_links(resp, tag)
+    fetch_links(resp)
   end
 end
+
+## write to csv
+csv_out(@csv, output)
 
 puts "* done !"
