@@ -50,9 +50,13 @@ class Base
   end
 
   def slice_datetime(str)
-    datetime = DateTime.parse(str)
-    date = datetime.nil? ? 'unknown' : datetime.strftime('%Y-%m-%d')
-    time = datetime.nil? ? 'unknown' : datetime.strftime('%H:%M')
-    [date,time]
+    begin
+      datetime = DateTime.parse(str)
+      date = datetime.strftime('%Y-%m-%d')
+      time = datetime.strftime('%H:%M')
+      return [date,time]
+    rescue ArgumentError
+      return ['', '']
+    end
   end
 end

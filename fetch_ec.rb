@@ -25,11 +25,13 @@ class Fetcher < Base
       next if div.text =~ /No events/
       t = div.css('div.info > a')[0].text.clean_up
       a = div.css('h3 > a')[0]
-      date,time = slice_datetime(div.xpath('./span').text.clean_up)
+
+      datetime_str = div.xpath('./span').text.clean_up
+      date,time = slice_datetime(datetime_str)
 
       desc = a.text.clean_up
       uri = "http://www.earningscast.com#{a['href']}"
-      @csv << [t, desc, uri, date, time]
+      @csv << [t, desc, uri, datetime_str, date, time]
     end
 
     info "#{ticker} data fetched"
@@ -67,12 +69,11 @@ end
 usage if options.source.nil?
 
 f = Fetcher.new
-f.csv = [['ticker','desc','url','date', 'time']]
+f.csv = [['ticker','desc','url','datetime_str','date','time']]
 
 # read the ticker list
-data = CSV.read(options.source, :headers => true, :encoding => 'UTF-8')
+data = CSV.read(options.source, :headers => false, :encoding => 'UTF-8')
 data.each do |r|
-  #puts r[0]
   f.fetch r[0].downcase.clean_up
 end
 
