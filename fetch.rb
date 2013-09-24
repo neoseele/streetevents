@@ -252,8 +252,9 @@ end
 def fetch(line)
   dir,url = line.split('|')
   FileUtils.mkdir dir unless File.directory? dir
+  wget_cmd = (/linux/ =~ RUBY_PLATFORM) ? 'wget' : 'wget.exe'
   # fetch text format only
-  `wget -P #{dir} -nc --content-disposition -t 3 "#{url}"` if url =~ /format=Text$/
+  `#{wget_cmd} -P #{dir} -nc --content-disposition -t 3 "#{url}"` if url =~ /format=Text$/
 end
 
 def usage
