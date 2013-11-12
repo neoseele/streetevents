@@ -70,6 +70,10 @@ def get_cookie(resp)
   return cookie.chomp(';')
 end
 
+def logged_in?(resp)
+  resp.response['set-cookie'].split(' ').each_with_object([]){|c, ary| ary << c if c =~ /^SE%/}.length > 1
+end
+
 def login
   url = URI.parse('https://www.streetevents.com')
   http = Net::HTTP.new url.host, url.port
@@ -125,9 +129,13 @@ def login
   cookie = get_cookie(resp)
   pp cookie
 
-  #show_body(resp)
-  puts "* Logged in as #{@username}"
-  return http,cookie
+  unless logged_in?(resp)
+    puts '* Incorrect Username or Password'
+    exit 1
+  else
+    puts "* Logged in as #{@username}"
+    return http,cookie
+  end
 end
 
 def events(http,cookie)
@@ -205,9 +213,6 @@ def transcripts(cookie, params={})
   }
   form_enum['gridTranscriptList$ctl00$ddlPages'] = page unless page.nil?
   data = URI.encode_www_form(form_enum)
-  
-  #puts data
-  #exit 0
 
   headers = {
     'User-Agent' => USERAGENT,
@@ -252,9 +257,15 @@ end
 def fetch(line)
   dir,url = line.split('|')
   FileUtils.mkdir dir unless File.directory? dir
-  wget_cmd = (/linux/ =~ RUBY_PLATFORM) ? 'wget' : 'wget.exe'
+
   # fetch text format only
-  `#{wget_cmd} -P #{dir} -nc --content-disposition -t 3 "#{url}"` if url =~ /format=Text$/
+  return unless url =~ /format=Text$/
+
+  if /linux/ =~ RUBY_PLATFORM
+    `wget -P #{dir} -nc --content-disposition -t 3 "#{url}"`
+  else
+    system("wget.exe -P #{dir} -nc --content-disposition -t 3 \"#{url}\"")
+  end
 end
 
 def usage
