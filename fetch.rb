@@ -261,7 +261,8 @@ def fetch(line)
   # fetch text format only
   return unless url =~ /format=Text$/
 
-  if /linux/ =~ RUBY_PLATFORM
+  case RUBY_PLATFORM
+  when /linux/, /darwin/
     `wget -P #{dir} -nc --content-disposition -t 3 "#{url}"`
   else
     system("wget.exe -P #{dir} -nc --content-disposition -t 3 \"#{url}\"")
