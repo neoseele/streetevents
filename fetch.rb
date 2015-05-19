@@ -267,6 +267,15 @@ def fetch(line)
   else
     system("wget.exe -P #{dir} -nc --content-disposition -t 3 \"#{url}\"")
   end
+
+  # pause after each successful fetch
+  pause
+end
+
+def pause
+  count = rand(20..40)
+  puts "* sleep #{count} seconds"
+  sleep(count)
 end
 
 def usage
@@ -358,6 +367,9 @@ puts "* fetching transcript download links (#{sd_str} -> #{ed_str})"
     resp = transcripts(cookie,params)
     fetch_links(resp, tag)
   end
+
+  # pause a bit after each day is processed
+  pause
 end
 
 puts "* done !"
