@@ -22,6 +22,7 @@ require 'cgi'
 CONFIG = 'config.yaml'
 USERAGENT = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.0.1) Gecko/20060111 Firefox/1.5.0.1'
 STREETEVENTS = 'http://www.streetevents.com'
+STREETEVENTS_HTTPS = 'https://www.streetevents.com'
 
 ### functions
 
@@ -73,10 +74,10 @@ def get_cookie(resp)
   return cookie.chomp(';')
 end
 
-def get_response(cookie,path)
+def get_response(path)
   uri = URI.parse(STREETEVENTS)
   http = Net::HTTP.new uri.host, uri.port
-  resp = http.get2(path, {'User-Agent' => USERAGENT, 'Cookie' => cookie})
+  resp = http.get2(path, {'User-Agent' => USERAGENT, 'Cookie' => @cookie})
   show_body(resp) if @debug
   return http, resp
 end
@@ -86,7 +87,7 @@ def logged_in?(resp)
 end
 
 def login
-  uri = URI.parse('https://www.streetevents.com')
+  uri = URI.parse(STREETEVENTS_HTTPS)
   http = Net::HTTP.new uri.host, uri.port
   http.verify_mode = OpenSSL::SSL::VERIFY_NONE
   http.use_ssl = true
@@ -99,7 +100,7 @@ def login
   headers = {
     'User-Agent' => USERAGENT,
     'Cookie' => cookie,
-    'Referer' => 'https://www.streetevents.com/cookieTest.aspx',
+    'Referer' => STREETEVENTS_HTTPS + '/cookieTest.aspx',
     'Content-Type' => 'application/x-www-form-urlencoded'
   }
 
@@ -127,7 +128,7 @@ def login
   headers = {
     'User-Agent' => USERAGENT,
     'Cookie' => cookie,
-    'Referer' => 'https://www.streetevents.com/Login.aspx',
+    'Referer' => STREETEVENTS_HTTPS + '/Login.aspx',
     'Content-Type' => 'application/x-www-form-urlencoded'
   }
 
@@ -138,10 +139,10 @@ def login
   unless logged_in?(resp)
     puts '* Incorrect Username or Password'
     exit 1
-  else
-    puts "* Logged in as #{@username}"
-    return http,cookie
   end
+
+  puts "* Logged in as #{@username}"
+  @cookie = cookie
 end
 
 def create_dir(ticker, company)
@@ -150,16 +151,16 @@ def create_dir(ticker, company)
   dir
 end
 
-def search(cookie, ticker)
+def search(ticker)
   path = "/capsule/TranscriptList.aspx?forceSearch=false&s=#{ticker.downcase}&st=1&r=0&d=1&silo=64&func="
-  http,resp = get_response(cookie, path)
+  http,resp = get_response(path)
 
   doc = Nokogiri::HTML(resp.body)
   tables = doc.css('table')
 
   # the page has 2 tables
   # if table #1 has 2 tr>td>b, the text of the second one will be 'No Matches Were Found.'
-  # otherwise the ticker search returns 1 or more than 1 results
+  # if table #1 has just 1 tr>td>b, ticker search returns 1 or more results
 
   if tables[0].css('tr td b').length == 1
     doc.css('table')[1].css('tbody tr').each do |tr|
@@ -168,15 +169,15 @@ def search(cookie, ticker)
       company = a.text.gsub(/\W/,'_').strip
       path = a['href']
 
-      transcript(cookie, path, real_ticker, company)
+      transcript(path, real_ticker, company)
     end
   else
     out("no matches found for ticker: #{ticker}")
   end
 end
 
-def transcript(cookie, path, ticker, company)
-  http,resp = get_response(cookie, path)
+def transcript(path, ticker, company)
+  http,resp = get_response(path)
 
   doc = Nokogiri::HTML(resp.body)
   if doc.css('#gridTransList thead tr')[1].text.strip.include? 'no data available'
@@ -185,12 +186,12 @@ def transcript(cookie, path, ticker, company)
     options = doc.css("#gridTransList_ctl00_ddlPages option")
     pages = options.nil? ? 1 : options.length
     (1..pages).to_a.each do |page|
-      fetch(http, resp, cookie, ticker, company, path, page)
+      fetch(http, resp, ticker, company, path, page)
     end
   end
 end
 
-def fetch(http,resp, cookie, ticker, company, path, page)
+def fetch(http,resp, ticker, company, path, page)
   # get cid from path
   cid = CGI::parse(path.split('?')[1])['cid'][0]
 
@@ -216,7 +217,7 @@ def fetch(http,resp, cookie, ticker, company, path, page)
 
   headers = {
     'User-Agent' => USERAGENT,
-    'Cookie' => cookie,
+    'Cookie' => @cookie,
     'Referer' => STREETEVENTS + path,
     'Content-Type' => 'application/x-www-form-urlencoded'
   }
@@ -313,14 +314,14 @@ cfg = load_config
 @password = cfg['login']['password']
 
 # backup the previous output file if it exists
-#FileUtils.mv(@output, @output.sub(/\.txt$/,'_bak.txt')) if @dl.nil? and File.exist?(@output)
+FileUtils.mv(@output, @output.sub(/\.txt$/,'_bak.txt')) if @dl.nil? and File.exist?(@output)
 
 # login
-http,cookie = login
+login
 
 CSV.foreach(csv, {:headers => true}) do |r|
   ticker = r['of_ticker']
-  search(cookie,ticker)
+  search(ticker)
 end
 
 puts "* done !"
