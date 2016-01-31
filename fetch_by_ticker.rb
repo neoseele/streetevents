@@ -77,7 +77,7 @@ end
 def get_response(path)
   uri = URI.parse(STREETEVENTS)
   http = Net::HTTP.new uri.host, uri.port
-  resp = http.get2(path, {'User-Agent' => USERAGENT, 'Cookie' => @cookie})
+  resp = http.request_get(path, {'User-Agent' => USERAGENT, 'Cookie' => @cookie})
   show_body(resp) if @debug
   return http, resp
 end
@@ -93,7 +93,7 @@ def login
   http.use_ssl = true
   path = '/cookieTest.aspx'
 
-  resp = http.get2(path, {'User-Agent' => USERAGENT})
+  resp = http.request_get(path, {'User-Agent' => USERAGENT})
   cookie = get_cookie(resp)
   pp cookie if @debug
 
