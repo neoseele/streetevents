@@ -14,11 +14,14 @@ require 'nokogiri'
 require 'fileutils'
 require 'date'
 require 'yaml'
+require 'csv'
+require 'cgi'
 
 ### constants
 
 CONFIG = 'config.yaml'
 USERAGENT = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.0.1) Gecko/20060111 Firefox/1.5.0.1'
+STREETEVENTS = 'http://www.streetevents.com'
 
 ### functions
 
@@ -70,21 +73,28 @@ def get_cookie(resp)
   return cookie.chomp(';')
 end
 
+def get_response(cookie,path)
+  uri = URI.parse(STREETEVENTS)
+  http = Net::HTTP.new uri.host, uri.port
+  resp = http.get2(path, {'User-Agent' => USERAGENT, 'Cookie' => cookie})
+  show_body(resp) if @debug
+  return http, resp
+end
+
 def logged_in?(resp)
   resp.response['set-cookie'].split(' ').each_with_object([]){|c, ary| ary << c if c =~ /^SE%/}.length > 1
 end
 
 def login
-  url = URI.parse('https://www.streetevents.com')
-  http = Net::HTTP.new url.host, url.port
+  uri = URI.parse('https://www.streetevents.com')
+  http = Net::HTTP.new uri.host, uri.port
   http.verify_mode = OpenSSL::SSL::VERIFY_NONE
   http.use_ssl = true
   path = '/cookieTest.aspx'
 
   resp = http.get2(path, {'User-Agent' => USERAGENT})
-  #cookie = resp.response['set-cookie'].split('; ')[0]
   cookie = get_cookie(resp)
-  pp cookie
+  pp cookie if @debug
 
   headers = {
     'User-Agent' => USERAGENT,
@@ -93,12 +103,11 @@ def login
     'Content-Type' => 'application/x-www-form-urlencoded'
   }
 
-  data = "Destinations=&JavascriptURL=&CookieTest=OK" 
+  data = "Destinations=&JavascriptURL=&CookieTest=OK"
 
   resp = http.post('/Login.aspx', data, headers)
-  #cookie = resp.response['set-cookie'].split('; ')[0]
   cookie = get_cookie(resp)
-  pp cookie
+  pp cookie if @debug
 
   viewstate = ''
   resp.body.each_line do |line|
@@ -107,7 +116,6 @@ def login
       break
     end
   end
-
   #puts viewstate
 
   data = "__VIEWSTATE=#{ERB::Util.url_encode(viewstate)}&" +
@@ -124,10 +132,8 @@ def login
   }
 
   resp = http.post('/login.aspx', data, headers)
-  #cookie = resp.response['set-cookie'].split('; ')[0]
-  #cookie = resp.response['set-cookie']
   cookie = get_cookie(resp)
-  pp cookie
+  pp cookie if @debug
 
   unless logged_in?(resp)
     puts '* Incorrect Username or Password'
@@ -138,38 +144,55 @@ def login
   end
 end
 
-def events(http,cookie)
-  cookie = cookie + ";filterview=expand"
-  pp cookie
-  headers = {
-    'User-Agent' => USERAGENT,
-    'Cookie' => cookie,
-    'Referer' => 'https://www.streetevents.com/Login.aspx',
-  }
-  path = '/events/streetsheet.aspx'
-  resp = http.get2(path, headers)
-  show_body(resp)
-
-  puts '---------------------'
-
-  url = URI.parse('http://www.streetevents.com')
-  http = Net::HTTP.new url.host, url.port
-  path = "/events/streetsheet.aspx"
-  resp = http.get(path, headers)
-  show_body(resp)
+def create_dir(ticker, company)
+  dir = "#{ticker}_#{company}"
+  FileUtils.mkdir dir unless File.directory? dir
+  dir
 end
 
-def transcripts(cookie, params={})
-  headers = {
-    'User-Agent' => USERAGENT,
-    'Cookie' => cookie
-  }
-  url = URI.parse('http://www.streetevents.com')
-  http = Net::HTTP.new url.host, url.port
-  path = "/transcript/ListView.aspx"
-  resp = http.get2(path, headers)
+def search(cookie, ticker)
+  path = "/capsule/TranscriptList.aspx?forceSearch=false&s=#{ticker.downcase}&st=1&r=0&d=1&silo=64&func="
+  http,resp = get_response(cookie, path)
 
-  #show_body(resp)
+  doc = Nokogiri::HTML(resp.body)
+  tables = doc.css('table')
+
+  # the page has 2 tables
+  # if table #1 has 2 tr>td>b, the text of the second one will be 'No Matches Were Found.'
+  # otherwise the ticker search returns 1 or more than 1 results
+
+  if tables[0].css('tr td b').length == 1
+    doc.css('table')[1].css('tbody tr').each do |tr|
+      real_ticker = tr.css('td')[0].text.gsub(/[[:space:]]/,'')
+      a = tr.css('a')[0]
+      company = a.text.gsub(/\W/,'_').strip
+      path = a['href']
+
+      transcript(cookie, path, real_ticker, company)
+    end
+  else
+    out("no matches found for ticker: #{ticker}")
+  end
+end
+
+def transcript(cookie, path, ticker, company)
+  http,resp = get_response(cookie, path)
+
+  doc = Nokogiri::HTML(resp.body)
+  if doc.css('#gridTransList thead tr')[1].text.strip.include? 'no data available'
+    out("no transcript found for #{ticker} - #{company}")
+  else
+    options = doc.css("#gridTransList_ctl00_ddlPages option")
+    pages = options.nil? ? 1 : options.length
+    (1..pages).to_a.each do |page|
+      fetch(http, resp, cookie, ticker, company, path, page)
+    end
+  end
+end
+
+def fetch(http,resp, cookie, ticker, company, path, page)
+  # get cid from path
+  cid = CGI::parse(path.split('?')[1])['cid'][0]
 
   viewstate = ''
   resp.body.each_line do |line|
@@ -180,72 +203,38 @@ def transcripts(cookie, params={})
   end
   #pp viewstate
 
-  sd = params[:start_date]
-  ed = params[:end_date]
-  cc = params[:country_code]
-  page = params[:page]
-
-  #pp sd
-  #pp ed
-  #pp cc
-  #pp page
-
   form_enum = {
     '__EVENTARGUMENT' => '',
-    '__EVENTTARGET' => '',
+    '__EVENTTARGET' => 'gridTransList$ctl00$ddlPages',
+    '__LASTFOCUS' => '',
     '__VIEWSTATE' => viewstate,
-    'companySearchSilo' => '8',
-    'companySearchText' => '',
-    'companySearchType' => '1',
-    'filterArea$briefSummaryFilter' => 'on',
-    'filterArea$countryCodeFilter' => cc,
-    'filterArea$ctl01$ctl00' => sd.strftime("%b %d, %Y"), # ie. Feb 01, 2012
-    'filterArea$ctl01$hiddenDate' => sd.strftime("%m/%d/%Y"), # ie. 02/01/2012
-    'filterArea$ctl02$ctl00' => ed.strftime("%b %d, %Y"),
-    'filterArea$ctl02$hiddenDate' => ed.strftime("%m/%d/%Y"),
-    'filterArea$eventTypeFilter$ctl00' => '1074003971',
-    'filterArea$eventTypeFilter$ctl00group1' => '1074003971',
-    'filterArea$industryCodeFilter' => '0',
-    'filterArea$languageFilter' => '1',
-    'filterArea$transcriptDocumentStatusFilter$Available' => 'on',
-    'filterArea$watchlistFilter' => '0',
-    'siteId' => '1'
+    'cid' => cid,
+    'gridTranscriptList$ctl00$ddlPages' => page,
+    'siteId' => '1',
   }
-  form_enum['gridTranscriptList$ctl00$ddlPages'] = page unless page.nil?
   data = URI.encode_www_form(form_enum)
 
   headers = {
     'User-Agent' => USERAGENT,
     'Cookie' => cookie,
-    'Referer' => 'http://www.streetevents.com/transcript/ListView.aspx',
+    'Referer' => STREETEVENTS + path,
     'Content-Type' => 'application/x-www-form-urlencoded'
   }
 
   resp = http.post(path, data, headers)
-end
-
-def fetch_links(resp, tag)
   resp.body.each_line do |line|
     if line =~ /text\.thomsonone\.com/
       #puts line
       line.scan(/javascript:DownloadDocument\(&#39;\S+&#39;\)/).each do |s|
-        link = /javascript:DownloadDocument\(&#39;(.*)&#39;\)/.match(s)[1]
-        line = tag + '|' + link.gsub('amp;','')
+        url = /javascript:DownloadDocument\(&#39;(.*)&#39;\)/.match(s)[1].gsub('amp;','')
         if @dl
-          fetch(line)
+          download(ticker, company, url)
         else
-          out(line)
+          out("#{ticker} | #{company} | #{url}")
         end
       end
     end
   end
-end
-
-def num_of_pages(resp)
-  doc = Nokogiri::HTML(resp.body)
-  options = doc.css("#gridTranscriptList_ctl00_ddlPages option")
-  return options.length unless options.nil?
-  0
 end
 
 def out(line)
@@ -254,9 +243,8 @@ def out(line)
   end
 end
 
-def fetch(line)
-  dir,url = line.split('|')
-  FileUtils.mkdir dir unless File.directory? dir
+def download(ticker, company, url)
+  dir = create_dir(ticker, company)
 
   # fetch text format only
   return unless url =~ /format=Text$/
@@ -293,16 +281,14 @@ end
 options = OpenStruct.new
 @opts = OptionParser.new
 @opts.banner = "Usage: #{File.basename($0)} [options]"
-@opts.on('-s', "--start-date DATE", String, 
-        'Require: specify date in format in "yyyy-mm-dd"') do |s|
-  options.start_date = s if s =~ /\d{4}\-\d{2}\-\d{2}/
+@opts.on('-i', "--input CSV", String, 'Require: inpurt CSV file') do |i|
+  options.input = i if File.exist?(i)
 end
-@opts.on('-e', "--end-date DATE", String, 
-        'Require: specify date in format in "yyyy-mm-dd"') do |e|
-  options.end_date = e if e =~ /\d{4}\-\d{2}\-\d{2}/
-end
-@opts.on('-d', "--download", 'Download files immediately') do |d|
+@opts.on('-d', "--download", 'Download Trascripts immediately') do |d|
   options.download = d
+end
+@opts.on('-v', "--debug", 'Show debug message') do |v|
+  options.debug = v
 end
 @opts.on_tail("-h", "--help", "Show this message") do
   puts @opts
@@ -312,16 +298,11 @@ end
 
 ### main
 
-sd_str = options.start_date
-ed_str = options.end_date
-usage if sd_str.nil?
-usage if ed_str.nil?
+csv = options.input
+usage if csv.nil?
 
-#sd = Date.new(2007,9,1)
-#ed = Date.new(2007,9,5)
-sd = Date.strptime(sd_str, '%Y-%m-%d')
-ed = Date.strptime(ed_str, '%Y-%m-%d')
-@output = sd.strftime('%Y%m%d') + '_' + ed.strftime('%Y%m%d') + '.txt'
+@debug = options.debug
+@output = 'out.txt'
 
 # download the files immediately?
 @dl = options.download
@@ -332,44 +313,14 @@ cfg = load_config
 @password = cfg['login']['password']
 
 # backup the previous output file if it exists
-FileUtils.mv(@output, @output.sub(/\.txt$/,'_bak.txt')) if @dl.nil? and File.exist?(@output)
+#FileUtils.mv(@output, @output.sub(/\.txt$/,'_bak.txt')) if @dl.nil? and File.exist?(@output)
 
 # login
 http,cookie = login
 
-puts "* fetching transcript download links (#{sd_str} -> #{ed_str})"
-
-(sd..ed).to_a.each do |d|
-  # tag is used by the download script
-  # to catagorise the downloaded transcripts
-  # ie. tag => 2007-09
-  tag = d.strftime('%Y-%m')
-
-  d_str = d.strftime('%Y-%m-%d')
-  puts ' ... ' + d_str + ' ... '
-  out('# ' + d_str)
-
-  params = {
-    :start_date => d,
-    :end_date => d,
-    :country_code => 'US'
-  }
-  resp = transcripts(cookie,params)
-  nop = num_of_pages(resp)
-
-  if nop > 0
-    (1..nop).to_a.each do |page|
-      params[:page] = page
-      resp = transcripts(cookie,params)
-      fetch_links(resp, tag)
-    end
-  else
-    resp = transcripts(cookie,params)
-    fetch_links(resp, tag)
-  end
-
-  # pause a bit after each day is processed
-  pause
+CSV.foreach(csv, {:headers => true}) do |r|
+  ticker = r['of_ticker']
+  search(cookie,ticker)
 end
 
 puts "* done !"

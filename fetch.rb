@@ -293,11 +293,11 @@ end
 options = OpenStruct.new
 @opts = OptionParser.new
 @opts.banner = "Usage: #{File.basename($0)} [options]"
-@opts.on('-s', "--start-date DATE", String, 
+@opts.on('-s', "--start-date DATE", String,
         'Require: specify date in format in "yyyy-mm-dd"') do |s|
   options.start_date = s if s =~ /\d{4}\-\d{2}\-\d{2}/
 end
-@opts.on('-e', "--end-date DATE", String, 
+@opts.on('-e', "--end-date DATE", String,
         'Require: specify date in format in "yyyy-mm-dd"') do |e|
   options.end_date = e if e =~ /\d{4}\-\d{2}\-\d{2}/
 end
