@@ -226,7 +226,7 @@ def parse(file)
     @csv << [
       ticker,date_str,time_str,reason,
       p.type,p.first_name,p.last_name,p.to_s,p.affil,p.title,
-      qna.num_of_words,qna.num_of_questions,qna.num_of_words_in_questions,qna.sentences
+      qna.num_of_words,qna.num_of_questions,qna.num_of_words_in_questions,qna.sentences.join(' ')
     ]
   end
 
