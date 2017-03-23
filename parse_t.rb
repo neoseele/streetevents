@@ -125,7 +125,7 @@ def count_word_frequence(sentences, word_freq={})
         word_freq[cw] = 1
       else
         word_freq[cw] += 1
-      end 
+      end
     end
   end
   word_freq
