@@ -51,7 +51,9 @@ class Qna
 
   def num_of_words(sents=@sentences)
     count = 0
+    # call function sentences to initialize @sentences if not already
     sents = sentences if sents.nil?
+    # return count if sents.empty?
     sents.each do |s|
       s.split(' ').each do |w|
         count += 1 unless w =~ /^\W+$/
@@ -267,7 +269,7 @@ output_file = File.basename(input).gsub(/\W+/,'_') + '.csv'
 output = File.join(output_dir, output_file)
 
 Find.find(input) do |path|
-  if File.directory? (path)
+  if File.directory?(path)
     next
   else
     if File.extname(path) == '.txt' and not File.basename(path) =~ /^\./

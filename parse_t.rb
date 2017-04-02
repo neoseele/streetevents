@@ -74,7 +74,7 @@ class Qna
       #@sentences = m.tokenize_text(@transcript)
 
       text = StanfordCoreNLP::Annotation.new(@transcript)
-      @@pipeline.annotate(text)
+      $pipeline.annotate(text)
 
       @sentences = []
       text.get(:sentences).each do |s|
@@ -236,11 +236,19 @@ end
 
 usage unless ARGV.length == 1 and File.directory?(ARGV[0])
 
-StanfordCoreNLP.jar_path = '/opt/stanford-core-nlp-minimal/'
-StanfordCoreNLP.model_path = '/opt/stanford-core-nlp-minimal/'
+StanfordCoreNLP.jar_path = '/opt/stanford-corenlp-full/'
+StanfordCoreNLP.model_path = '/opt/stanford-corenlp-full/'
 StanfordCoreNLP.set_model('pos.model', 'english-left3words-distsim.tagger')
 StanfordCoreNLP.use :english
-@@pipeline =  StanfordCoreNLP.load(:tokenize, :ssplit)
+StanfordCoreNLP.default_jars = [
+  'joda-time.jar',
+  'xom.jar',
+  'stanford-corenlp-3.7.0.jar',
+  'stanford-corenlp-3.7.0-models.jar',
+  'jollyday.jar',
+  'bridge.jar'
+]
+$pipeline =  StanfordCoreNLP.load(:tokenize, :ssplit)
 
 DEBUG = false
 
@@ -267,7 +275,7 @@ output_file = File.basename(input).gsub(/\W+/,'_') + '.csv'
 output = File.join(output_dir, output_file)
 
 Find.find(input) do |path|
-  if File.directory? (path)
+  if File.directory?(path)
     next
   else
     if File.extname(path) == '.txt' and not File.basename(path) =~ /^\./
