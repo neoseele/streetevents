@@ -41,30 +41,27 @@ class Speech
     @transcript = transcript
   end
 
-  def questions
-    qw_regex = "(what|where|when|which|who|whom|would|do|does|doesn't|is|isn't|can|could|to what exten|should|was|has|how|which|if)\W+"
-    questions = []
-    sentences.each do |s|
-      if s =~ /\?/
-        questions << s
-        next
-      end
-      questions << s if s.downcase =~ /^#{qw_regex}/
-    end
-    questions
-  end
-
-  def num_of_words(sents=@sentences)
-    count = 0
+  def num_of_words(sents=nil)
     # call function sentences to initialize @sentences if not already
-    sents = sentences if sents.nil?
-    # return count if sents.empty?
+    load_sentences
+
+    sents = @sentences if sents.nil?
+    count = 0
     sents.each do |s|
-      s.split(' ').each do |w|
-        count += 1 unless w =~ /^\W+$/
-      end
+      count += s.split(' ').reduce(0) { |sum, w| (w =~ /^\W+$/) ? sum : sum + 1 }
     end
     count
+  end
+
+  def questions
+    # call function sentences to initialize @sentences if not already
+    load_sentences
+
+    @sentences.select do |sentence|
+      s = sentence.downcase
+      s =~ /\?/ or
+      s =~ /^(what|where|when|which|who|whom|would|do|does|doesn't|is|isn't|can|could|to what exten|should|was|has|how|which|if)\W+/
+    end
   end
 
   def num_of_questions
@@ -75,11 +72,10 @@ class Speech
     num_of_words(questions)
   end
 
-  def sentences
-    if @sentences.nil?
-      #m = TactfulTokenizer::Model.new
-      #@sentences = m.tokenize_text(@transcript)
+  private
 
+  def load_sentences
+    if @sentences.nil?
       text = StanfordCoreNLP::Annotation.new(@transcript)
       $pipeline.annotate(text)
 
