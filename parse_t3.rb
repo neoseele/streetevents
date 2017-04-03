@@ -1,8 +1,6 @@
 #!/usr/bin/env ruby
 
 require 'find'
-
-#require 'tactful_tokenizer'
 require 'stanford-core-nlp'
 
 ## load the base class
@@ -217,11 +215,9 @@ parser.csv = [['ticker','date','time','reason','ca',
   'no_words','no_questions','no_words_having_questions','sentences']]
 
 input = ARGV[0]
-# transcripts = parser.run(input)
-# t = parser.clean_up(transcripts[1])
 
 output_dir = File.dirname(input)
-output_file = File.basename(input).gsub(/\W+/,'_') + '.csv'
+output_file = File.basename(input).gsub(/\W+/,'_') + '_factiva.csv'
 output = File.join(output_dir, output_file)
 
 Find.find(input) do |path|
