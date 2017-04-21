@@ -135,7 +135,7 @@ class Parser < Base
     while transcript.size > 0
       line = transcript.shift
       # puts line
-      speech_found = /^([A-Z ,\.]*):(.*)/.match(line)
+      speech_found = /^([A-Z ,\.]+):(.*)/.match(line)
 
       if speech_found.nil?
         # not a speech line
@@ -165,6 +165,8 @@ class Parser < Base
     # the first line of the file is always /^#+$/, so
     # the start of file.open loop will always create a empty transcript array
     File.open(file, 'r').each do |line|
+      # clean up annoying stuff like \r\n
+      line = line.strip
       if line =~ /^##+$/
         # found a /^#+$/ line but the transcript is not empty
         # which means we found a new transcript
@@ -176,7 +178,6 @@ class Parser < Base
         end
         transcript = []
       else
-        line = line.strip
         transcript << line unless line.empty?
       end
     end
